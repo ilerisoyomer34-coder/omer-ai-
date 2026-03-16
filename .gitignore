@@ -1,0 +1,5 @@
+node_modules/
+.env
+*.log
+generate-icons.js
+make-icons.js

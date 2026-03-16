@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<title>ÖMER AI</title>
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json"/>
+<meta name="theme-color" content="#7c3aed"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="ÖMER AI"/>
+<link rel="apple-touch-icon" href="/icons/icon-180.png"/>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #080810;
+    --bg2:       #0f0f1a;
+    --bg3:       #16162a;
+    --border:    #2a2a4a;
+    --accent:    #7c3aed;
+    --accent2:   #a78bfa;
+    --accent3:   #4f46e5;
+    --text:      #e2e8f0;
+    --text2:     #94a3b8;
+    --text3:     #64748b;
+    --user-bg:   linear-gradient(135deg, #7c3aed, #4f46e5);
+    --ai-bg:     #16162a;
+    --radius:    14px;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+
+  /* ── Layout ── */
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    max-width: 860px;
+    margin: 0 auto;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-icon {
+    width: 38px; height: 38px;
+    background: var(--user-bg);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .logo-text { display: flex; flex-direction: column; }
+  .logo-name {
+    font-size: 17px; font-weight: 700;
+    background: linear-gradient(135deg, #a78bfa, #818cf8);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .logo-sub { font-size: 11px; color: var(--text3); }
+  .header-actions { display: flex; gap: 8px; }
+  .btn-icon {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px;
+    transition: all 0.15s;
+  }
+  .btn-icon:hover { background: var(--border); color: var(--text); }
+
+  /* ── Chat area ── */
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 16px;
+    scroll-behavior: smooth;
+  }
+  #chat::-webkit-scrollbar { width: 4px; }
+  #chat::-webkit-scrollbar-track { background: transparent; }
+  #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* ── Welcome ── */
+  #welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    text-align: center;
+    gap: 28px;
+    padding: 20px;
+  }
+  .welcome-icon {
+    width: 72px; height: 72px;
+    background: var(--user-bg);
+    border-radius: 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 38px;
+    box-shadow: 0 0 40px rgba(124,58,237,0.3);
+  }
+  .welcome-title {
+    font-size: 26px; font-weight: 700;
+    background: linear-gradient(135deg, #a78bfa, #818cf8, #60a5fa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .welcome-sub { color: var(--text2); font-size: 14px; max-width: 380px; }
+  .quick-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+    max-width: 500px;
+  }
+  .quick-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  .quick-btn:hover { background: var(--border); border-color: var(--accent); }
+  .quick-btn .qicon { font-size: 18px; display: block; margin-bottom: 4px; }
+  .quick-btn .qlabel { font-weight: 500; display: block; }
+  .quick-btn .qdesc { color: var(--text3); font-size: 12px; display: block; margin-top: 2px; }
+
+  /* ── Messages ── */
+  .msg-wrap {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+    animation: fadeIn 0.2s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
+  .msg-wrap.user { flex-direction: row-reverse; }
+
+  .msg-avatar {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .msg-wrap.user .msg-avatar { background: var(--user-bg); }
+  .msg-wrap.ai .msg-avatar { background: var(--bg3); border: 1px solid var(--border); }
+
+  .msg-body { max-width: 82%; display: flex; flex-direction: column; gap: 4px; }
+  .msg-wrap.user .msg-body { align-items: flex-end; }
+
+  .msg-bubble {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-size: 14.5px;
+    line-height: 1.65;
+    position: relative;
+  }
+  .msg-wrap.user .msg-bubble {
+    background: var(--user-bg);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-wrap.ai .msg-bubble {
+    background: var(--ai-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+
+  /* Markdown in AI bubbles */
+  .msg-bubble h1,.msg-bubble h2,.msg-bubble h3 {
+    font-size: 15px; font-weight: 600; margin: 12px 0 6px;
+    color: var(--accent2);
+  }
+  .msg-bubble h1 { font-size: 17px; }
+  .msg-bubble p { margin: 6px 0; }
+  .msg-bubble ul, .msg-bubble ol { padding-left: 20px; margin: 6px 0; }
+  .msg-bubble li { margin: 3px 0; }
+  .msg-bubble strong { color: #c4b5fd; font-weight: 600; }
+  .msg-bubble em { color: #a5b4fc; }
+  .msg-bubble code {
+    background: #0a0a18;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 6px;
+    font-size: 13px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    color: #a78bfa;
+  }
+  .msg-bubble pre {
+    background: #0a0a18;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    overflow-x: auto;
+    margin: 8px 0;
+  }
+  .msg-bubble pre code { background: none; border: none; padding: 0; color: #e2e8f0; }
+  .msg-bubble blockquote {
+    border-left: 3px solid var(--accent);
+    padding-left: 12px;
+    color: var(--text2);
+    margin: 8px 0;
+  }
+  .msg-bubble table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+  .msg-bubble th { background: #1e1e3a; padding: 7px 10px; border: 1px solid var(--border); color: var(--accent2); }
+  .msg-bubble td { padding: 6px 10px; border: 1px solid var(--border); }
+  .msg-bubble hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+
+  .msg-time { font-size: 11px; color: var(--text3); padding: 0 4px; }
+
+  /* Copy button */
+  .msg-actions { display: flex; gap: 4px; margin-top: 2px; }
+  .msg-copy {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text3);
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .msg-copy:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ── Typing indicator ── */
+  #typing {
+    display: none;
+    gap: 10px;
+    margin-bottom: 18px;
+    align-items: center;
+  }
+  .typing-avatar {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .typing-bubble {
+    background: var(--ai-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    border-bottom-left-radius: 4px;
+    padding: 12px 16px;
+    display: flex; gap: 5px; align-items: center;
+  }
+  .dot {
+    width: 7px; height: 7px;
+    background: var(--text3);
+    border-radius: 50%;
+    animation: bounce 1.2s ease-in-out infinite;
+  }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity:0.4; }
+    40% { transform: translateY(-6px); opacity:1; }
+  }
+
+  /* ── Input area ── */
+  #input-area {
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+    padding: 14px 16px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    flex-shrink: 0;
+  }
+
+  /* Subject chips */
+  .chips {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 10px;
+    scrollbar-width: none;
+  }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--accent2); background: rgba(124,58,237,0.1); }
+
+  .input-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  #input {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 11px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    outline: none;
+    max-height: 160px;
+    min-height: 44px;
+    transition: border-color 0.15s;
+    line-height: 1.5;
+  }
+  #input:focus { border-color: var(--accent); }
+  #input::placeholder { color: var(--text3); }
+  #send {
+    width: 44px; height: 44px;
+    background: var(--user-bg);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  #send:hover { opacity: 0.85; }
+  #send:active { transform: scale(0.93); }
+  #send:disabled { opacity: 0.4; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🤖</div>
+      <div class="logo-text">
+        <span class="logo-name">ÖMER AI</span>
+        <span class="logo-sub">Her dersin akıllı asistanı</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn-icon" onclick="clearChat()" title="Sohbeti temizle">🗑️</button>
+    </div>
+  </header>
+
+  <!-- Chat -->
+  <div id="chat">
+    <!-- Welcome -->
+    <div id="welcome">
+      <div class="welcome-icon">🤖</div>
+      <div>
+        <div class="welcome-title">Merhaba! Ben ÖMER AI</div>
+        <div class="welcome-sub" style="margin-top:6px">Her derste yardımcınım — soru hazırlarım, konu anlatırım, şakalaşırım 🎉</div>
+      </div>
+      <div class="quick-grid">
+        <button class="quick-btn" onclick="quickSend('10 tane YKS matematik sorusu hazırla, cevap anahtarıyla birlikte.')">
+          <span class="qicon">📝</span>
+          <span class="qlabel">Soru Hazırla</span>
+          <span class="qdesc">Test soruları üret</span>
+        </button>
+        <button class="quick-btn" onclick="quickSend('Türev konusunu sıfırdan anlat, örneklerle açıkla.')">
+          <span class="qicon">🎓</span>
+          <span class="qlabel">Konu Anlat</span>
+          <span class="qdesc">Dersi sıfırdan öğren</span>
+        </button>
+        <button class="quick-btn" onclick="quickSend('Bana zor bir fizik olimpiyat sorusu çöz, adım adım göster.')">
+          <span class="qicon">🧮</span>
+          <span class="qlabel">Problem Çöz</span>
+          <span class="qdesc">Adım adım çözüm</span>
+        </button>
+        <button class="quick-btn" onclick="quickSend('Bana komik bir matematik veya fizik şakası anlat 😄')">
+          <span class="qicon">😄</span>
+          <span class="qlabel">Şaka Yap</span>
+          <span class="qdesc">Biraz eğlenelim</span>
+        </button>
+        <button class="quick-btn" onclick="quickSend('Atatürk\\'ün hayatını madde madde özetle.')">
+          <span class="qicon">📚</span>
+          <span class="qlabel">Tarih Özet</span>
+          <span class="qdesc">Hızlı özet al</span>
+        </button>
+        <button class="quick-btn" onclick="quickSend('İngilizce A2 seviyesi için 5 konuşma diyaloğu yaz ve kelimelerini açıkla.')">
+          <span class="qicon">🌍</span>
+          <span class="qlabel">İngilizce</span>
+          <span class="qdesc">Dil pratiği yap</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Typing indicator -->
+    <div id="typing">
+      <div class="typing-avatar">🤖</div>
+      <div class="typing-bubble">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input area -->
+  <div id="input-area">
+    <div class="chips">
+      <button class="chip" onclick="insertChip('Matematik')">📐 Matematik</button>
+      <button class="chip" onclick="insertChip('Fizik')">⚛️ Fizik</button>
+      <button class="chip" onclick="insertChip('Kimya')">🧪 Kimya</button>
+      <button class="chip" onclick="insertChip('Biyoloji')">🧬 Biyoloji</button>
+      <button class="chip" onclick="insertChip('Tarih')">🏛️ Tarih</button>
+      <button class="chip" onclick="insertChip('Edebiyat')">📖 Edebiyat</button>
+      <button class="chip" onclick="insertChip('Coğrafya')">🌍 Coğrafya</button>
+      <button class="chip" onclick="insertChip('İngilizce')">🇬🇧 İngilizce</button>
+      <button class="chip" onclick="insertChip('Felsefe')">💭 Felsefe</button>
+    </div>
+    <div class="input-row">
+      <textarea id="input" placeholder="Bir şey sor… (Shift+Enter = yeni satır)" rows="1"></textarea>
+      <button id="send" onclick="sendMessage()">➤</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  marked.setOptions({ breaks: true, gfm: true });
+
+  const chatEl   = document.getElementById('chat');
+  const inputEl  = document.getElementById('input');
+  const sendBtn  = document.getElementById('send');
+  const welcomeEl = document.getElementById('welcome');
+  const typingEl  = document.getElementById('typing');
+
+  let messages = [];
+  let isStreaming = false;
+
+  // Auto-resize textarea
+  inputEl.addEventListener('input', () => {
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
+  });
+
+  // Enter to send, Shift+Enter for newline
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  function insertChip(subject) {
+    const val = inputEl.value.trim();
+    if (!val) {
+      inputEl.value = subject + ' hakkında ';
+    } else if (!val.toLowerCase().includes(subject.toLowerCase())) {
+      inputEl.value = val + ' (' + subject + ')';
+    }
+    inputEl.focus();
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
+  }
+
+  function quickSend(text) {
+    inputEl.value = text;
+    sendMessage();
+  }
+
+  function clearChat() {
+    messages = [];
+    // Remove all message wraps
+    document.querySelectorAll('.msg-wrap').forEach(el => el.remove());
+    typingEl.style.display = 'none';
+    welcomeEl.style.display = 'flex';
+  }
+
+  function addMessage(role, content, streaming = false) {
+    if (welcomeEl.style.display !== 'none') {
+      welcomeEl.style.display = 'none';
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-wrap ' + role;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'msg-avatar';
+    avatar.textContent = role === 'user' ? '👤' : '🤖';
+
+    const body = document.createElement('div');
+    body.className = 'msg-body';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+
+    const now = new Date();
+    const time = document.createElement('div');
+    time.className = 'msg-time';
+    time.textContent = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+
+    body.appendChild(bubble);
+    body.appendChild(time);
+
+    if (role === 'ai') {
+      const actions = document.createElement('div');
+      actions.className = 'msg-actions';
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'msg-copy';
+      copyBtn.textContent = '📋 Kopyala';
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(bubble._rawText || bubble.textContent);
+        copyBtn.textContent = '✅ Kopyalandı';
+        setTimeout(() => copyBtn.textContent = '📋 Kopyala', 2000);
+      };
+      actions.appendChild(copyBtn);
+      body.appendChild(actions);
+    }
+
+    wrap.appendChild(avatar);
+    wrap.appendChild(body);
+
+    // Insert before typing indicator
+    chatEl.insertBefore(wrap, typingEl);
+
+    if (role === 'user') {
+      bubble.textContent = content;
+    } else if (!streaming) {
+      bubble._rawText = content;
+      bubble.innerHTML = marked.parse(content);
+    }
+
+    scrollBottom();
+    return bubble;
+  }
+
+  function scrollBottom() {
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text || isStreaming) return;
+
+    isStreaming = true;
+    sendBtn.disabled = true;
+    inputEl.value = '';
+    inputEl.style.height = 'auto';
+
+    // Add user message
+    addMessage('user', text);
+    messages.push({ role: 'user', content: text });
+
+    // Show typing indicator
+    typingEl.style.display = 'flex';
+    scrollBottom();
+
+    // Create AI bubble (streaming)
+    const bubble = addMessage('ai', '', true);
+    let rawText = '';
+
+    typingEl.style.display = 'none';
+
+    try {
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages })
+      });
+
+      if (!res.ok) {
+        throw new Error('Sunucu hatası: ' + res.status);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6);
+          if (data === '[DONE]') break;
+
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.error) throw new Error(parsed.error);
+            if (parsed.text) {
+              rawText += parsed.text;
+              bubble._rawText = rawText;
+              bubble.innerHTML = marked.parse(rawText);
+              scrollBottom();
+            }
+          } catch (e) {
+            if (e.message.includes('Unexpected')) continue;
+            throw e;
+          }
+        }
+      }
+
+      messages.push({ role: 'assistant', content: rawText });
+
+    } catch (err) {
+      bubble.innerHTML = '⚠️ Bir hata oluştu: ' + err.message;
+      bubble.style.color = '#f87171';
+      // Remove the failed message from history
+      if (messages[messages.length - 1]?.role === 'user') {
+        messages.pop();
+      }
+    } finally {
+      isStreaming = false;
+      sendBtn.disabled = false;
+      typingEl.style.display = 'none';
+      inputEl.focus();
+    }
+  }
+
+  // Service Worker kaydet
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js');
+  }
+</script>
+</body>
+</html>
