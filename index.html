@@ -217,17 +217,6 @@ header{
 </style>
 </head>
 <body>
-<!-- API Key Modal -->
-<div id="apikey-modal">
-  <div class="apikey-box">
-    <h2>🔑 Groq API Key</h2>
-    <p>ÖMER AI'yı kullanmak için ücretsiz bir Groq API key gerekli.<br>
-    <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a> adresinden saniyeler içinde ücretsiz alabilirsin.</p>
-    <input id="apikey-input" type="password" placeholder="gsk_..." autocomplete="off"/>
-    <button id="apikey-save" onclick="saveApiKey()">Kaydet ve Başla ➤</button>
-    <div class="apikey-note">🔒 Key sadece tarayıcında saklanır, hiçbir yere gönderilmez.</div>
-  </div>
-</div>
 
 <div id="app">
 
@@ -252,7 +241,7 @@ header{
     <header>
       <button id="menu-btn" onclick="toggleSidebar()">☰</button>
       <div id="chat-title-header">ÖMER AI</div>
-      <button onclick="showApiKeyModal()" title="API Key Ayarla" style="background:var(--bg3);border:1px solid var(--border);color:var(--text2);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">⚙️</button>
+      <div style="width:32px"></div>
     </header>
 
     <div id="chat">
@@ -313,18 +302,7 @@ header{
 marked.setOptions({breaks:true,gfm:true});
 
 // ── API Key ──
-function getApiKey(){ return localStorage.getItem('groq-api-key')||''; }
-function showApiKeyModal(){
-  document.getElementById('apikey-modal').classList.add('show');
-  document.getElementById('apikey-input').value = getApiKey();
-  setTimeout(()=>document.getElementById('apikey-input').focus(),100);
-}
-function saveApiKey(){
-  const key = document.getElementById('apikey-input').value.trim();
-  if(!key){ alert('Lütfen bir API key gir.'); return; }
-  localStorage.setItem('groq-api-key', key);
-  document.getElementById('apikey-modal').classList.remove('show');
-}
+function getApiKey(){ return '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'; }
 
 // ── System Prompt ──
 function buildSystemPrompt(){
@@ -400,7 +378,6 @@ function init(){
   } else {
     newChat();
   }
-  if(!getApiKey()) showApiKeyModal();
 }
 
 // ── New chat ──
