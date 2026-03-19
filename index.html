@@ -288,6 +288,7 @@ header{
         <button class="chip" onclick="insertChip('Edebiyat')">📖 Edebiyat</button>
         <button class="chip" onclick="insertChip('Coğrafya')">🌍 Coğrafya</button>
         <button class="chip" onclick="insertChip('İngilizce')">🇬🇧 İngilizce</button>
+        <button class="chip" onclick="sendNews()">📰 Güncel Haberler</button>
       </div>
       <div class="input-row">
         <textarea id="input" placeholder="Bir şey sor… (Enter = gönder)" rows="1"></textarea>
@@ -303,6 +304,46 @@ marked.setOptions({breaks:true,gfm:true});
 
 // ── API Key ──
 function getApiKey(){ return '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'; }
+
+// ── Güncel Haberler ──
+let newsCache = null;
+let newsCacheTime = 0;
+
+async function fetchNews(){
+  // 10 dakika cache
+  if(newsCache && Date.now() - newsCacheTime < 10 * 60 * 1000) return newsCache;
+  const feeds = [
+    'https://www.hurriyet.com.tr/rss/anasayfa',
+    'https://www.ntv.com.tr/son-dakika.rss',
+    'https://www.sabah.com.tr/rss/anasayfa.xml'
+  ];
+  for(const feed of feeds){
+    try{
+      const url = 'https://api.rss2json.com/v1/api.json?count=15&rss_url='+encodeURIComponent(feed);
+      const res = await fetch(url);
+      const data = await res.json();
+      if(data.status==='ok' && data.items?.length){
+        const haberler = data.items.map(it=>'- '+it.title).join('\n');
+        newsCache = haberler;
+        newsCacheTime = Date.now();
+        return haberler;
+      }
+    }catch(e){}
+  }
+  return null;
+}
+
+async function sendNews(){
+  if(isStreaming) return;
+  inputEl.value = 'Bugünün güncel haberlerini özetle';
+  sendMessage(true);
+}
+
+const NEWS_KEYWORDS = ['haber','gündem','son dakika','bugün ne','dünyada ne','türkiye\'de ne','neler oldu','gelişme','olay'];
+function isNewsQuery(text){
+  const t = text.toLowerCase();
+  return NEWS_KEYWORDS.some(k=>t.includes(k));
+}
 
 // ── System Prompt ──
 function buildSystemPrompt(){
@@ -497,7 +538,7 @@ function addBubble(role, content, streaming=false){
 function scrollBottom(){ chatEl.scrollTop=chatEl.scrollHeight; }
 
 // ── Send ──
-async function sendMessage(){
+async function sendMessage(forceNews=false){
   const text=inputEl.value.trim();
   if(!text||isStreaming) return;
   isStreaming=true;sendBtn.disabled=true;
@@ -512,6 +553,15 @@ async function sendMessage(){
   typingEl.style.display='none';
   let rawText='';
 
+  // Haber sorusuysa RSS'ten haberleri çek
+  let systemPrompt = buildSystemPrompt();
+  if(forceNews || isNewsQuery(text)){
+    const haberler = await fetchNews();
+    if(haberler){
+      systemPrompt += '\n\n## GÜNCEL HABERLER (az önce çekildi)\nAşağıdaki haberler şu an güncel. Bunları kullanarak cevap ver:\n'+haberler;
+    }
+  }
+
   try{
     const apiKey = getApiKey();
     if(!apiKey){ showApiKeyModal(); isStreaming=false; sendBtn.disabled=false; typingEl.style.display='none'; return; }
@@ -520,7 +570,7 @@ async function sendMessage(){
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
       body:JSON.stringify({
         model:'llama-3.3-70b-versatile',
-        messages:[{role:'system',content:buildSystemPrompt()},...messages],
+        messages:[{role:'system',content:systemPrompt},...messages],
         stream:true,
         max_tokens:8192,
         temperature:0.7
