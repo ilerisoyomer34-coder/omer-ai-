@@ -1,0 +1,72 @@
+name: Drift Kumanda APK
+
+on:
+  push:
+    branches: [drift-kumanda]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: drift-kumanda
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Kumanda arayüzünü uygulamaya kopyala
+        run: |
+          mkdir -p android/app/src/main/assets
+          cp web/index.html android/app/src/main/assets/index.html
+
+      - name: APK derle
+        working-directory: android
+        run: |
+          set -o pipefail
+          gradle assembleRelease --no-daemon --stacktrace -PbuildNum=${{ github.run_number }} 2>&1 | tee ../build.log
+
+      - name: Derleme sonucunu kaydet
+        if: always()
+        run: |
+          mkdir -p out
+          cp build.log out/build.log 2>/dev/null || echo "log yok" > out/build.log
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          if [ -f "$APK" ]; then cp "$APK" out/DriftKumanda.apk; echo ok > out/status.txt; else echo fail > out/status.txt; fi
+          echo "${{ github.sha }}" > out/source-sha.txt
+          echo "${{ github.run_number }}" > out/run-number.txt
+          cd out
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898248+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -b drift-kumanda-build
+          git add -A
+          git commit -qm "Derleme ${{ github.run_number }} ($(cat status.txt))"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" drift-kumanda-build
+
+      - name: Sürüm yayınla
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: drift-kumanda-v${{ github.run_number }}
+          name: Drift Kumanda 1.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          make_latest: 'true'
+          files: out/DriftKumanda.apk
+          body: |
+            Android için Bluetooth robot kumandası. mBot2, mBot, LEGO BOOST / City / Technic hub, LEGO SPIKE Prime ve Essential, HC-05 / HM-10 modüllü Arduino arabalar.
+
+            **Kurulum:** Telefonda aşağıdaki `DriftKumanda.apk` dosyasını indir ve aç. "Bilinmeyen uygulamalar" uyarısı çıkarsa tarayıcına bu izni ver. Güncelleme yaparken eski sürümü silmen gerekmez.

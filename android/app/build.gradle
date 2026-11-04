@@ -1,0 +1,44 @@
+plugins {
+    id 'com.android.application'
+}
+
+def buildNum = (project.findProperty('buildNum') ?: '1').toString().toInteger()
+
+android {
+    namespace 'com.omer.driftkumanda'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.omer.driftkumanda'
+        minSdk 23
+        targetSdk 34
+        versionCode buildNum
+        versionName "1.${buildNum}"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file('drift-kumanda.keystore')
+            storePassword 'driftkumanda'
+            keyAlias 'driftkumanda'
+            keyPassword 'driftkumanda'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}

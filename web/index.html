@@ -1,0 +1,2144 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#11141b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Robot için Bluetooth araba kumandası: vites, el freni, drift, nitro. mBot2, mBot, LEGO BOOST, SPIKE ve Arduino arabalar.">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+<title>Robot Drift Kumandası</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600;700&family=Saira+Condensed:wght@600;700;800&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: yatay kokpit — sol başparmak direksiyon, ortada gösterge paneli, sağ başparmak pedallar + el freni */
+:root{
+  color-scheme: dark;
+  --cabin:#11141b;
+  --cabin-glow:#171c27;
+  --panel:#191e2a;
+  --panel-hi:#232a3a;
+  --line:#313b51;
+  --ink:#e8ecf4;
+  --ink-dim:#8a95ab;
+  --amber:#ffb340;
+  --amber-soft:rgba(255,179,64,.18);
+  --on-amber:#1b1407;
+  --brake:#ff5656;
+  --brake-soft:rgba(255,86,86,.2);
+  --nitro:#58b6ff;
+  --ok:#47d68a;
+  --shade:rgba(5,7,11,.6);
+  --font-display:"Saira Condensed","Arial Narrow",system-ui,sans-serif;
+  --font-ui:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+html{height:100%;box-sizing:border-box}
+*,*::before,*::after{box-sizing:inherit}
+body{height:100%;margin:0;background:var(--cabin);color:var(--ink);font-family:var(--font-ui);font-weight:500;
+  overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+#app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:8px 10px;
+  background:radial-gradient(120% 90% at 50% 40%,var(--cabin-glow) 0%,var(--cabin) 70%)}
+
+/* ---------- üst şerit ---------- */
+.topbar{display:flex;align-items:center;gap:8px;min-width:0}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:10px;height:38px;padding:0 14px;display:inline-flex;align-items:center;gap:8px;
+  font-weight:600;font-size:.95rem;white-space:nowrap}
+.btn:active{background:var(--panel-hi)}
+.btn:disabled{opacity:.5}
+.btn.primary{background:var(--amber);color:var(--on-amber);border-color:var(--amber)}
+.btn.primary.on{background:var(--panel);color:var(--ink);border-color:var(--ok)}
+.btn.icon{width:38px;padding:0;justify-content:center}
+.btn svg{width:18px;height:18px;flex:none}
+.estop{background:var(--brake);border-color:var(--brake);color:#fff;font-family:var(--font-display);font-weight:800;letter-spacing:.1em;font-size:1rem}
+.pill{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:999px;background:var(--panel);border:1px solid var(--line);
+  font-size:.85rem;color:var(--ink-dim);white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.pill b{color:var(--ink);font-weight:600}
+.pill>span{overflow:hidden;text-overflow:ellipsis}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ink-dim);flex:none}
+.pill[data-state="on"] .dot{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.pill[data-state="connecting"] .dot{background:var(--amber);animation:blink .7s infinite alternate}
+@keyframes blink{to{opacity:.25}}
+.spacer{flex:1}
+@media (max-width:620px){.hide-narrow{display:none}}
+@media (max-width:480px){#connPill{display:none}}
+
+/* ---------- kokpit ---------- */
+.cockpit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(0,1fr);gap:12px;min-height:0}
+.zone{min-height:0;min-width:0;position:relative}
+
+.steer-zone{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:6px;container-type:size}
+.steer-stage{position:relative;display:grid;place-items:center;min-height:0;touch-action:none}
+.wheel{width:min(94cqw,86cqh);aspect-ratio:1;max-width:100%;touch-action:none;position:relative}
+.wheel svg{width:100%;height:100%;display:block;will-change:transform}
+.wheel .rim{fill:none;stroke:var(--panel-hi);stroke-width:20}
+.wheel .grip{fill:none;stroke:var(--line);stroke-width:20;stroke-dasharray:3 9}
+.wheel .rim-edge{fill:none;stroke:var(--cabin);stroke-width:1.5}
+.wheel .spoke{fill:var(--panel-hi);stroke:var(--line);stroke-width:1}
+.wheel .hub{fill:var(--panel);stroke:var(--line);stroke-width:2}
+.wheel .hub-ring{fill:none;stroke:var(--amber);stroke-width:1.5;opacity:.55}
+.wheel .marker{fill:var(--amber)}
+.wheel .hub-txt{fill:var(--ink-dim);font-family:var(--font-display);font-weight:700;font-size:13px;letter-spacing:.14em}
+
+.joy{width:min(88cqw,80cqh);aspect-ratio:1;max-width:100%;border-radius:50%;position:relative;touch-action:none;
+  background:radial-gradient(circle,var(--panel-hi) 0 30%,var(--panel) 31% 100%);border:1px solid var(--line)}
+.joy::before,.joy::after{content:"";position:absolute;background:var(--line)}
+.joy::before{left:50%;top:10%;bottom:10%;width:1px}
+.joy::after{top:50%;left:10%;right:10%;height:1px}
+.joy-lbl{position:absolute;font-family:var(--font-display);font-weight:700;font-size:.72rem;letter-spacing:.14em;color:var(--ink-dim)}
+.joy-lbl.t{top:4%;left:50%;transform:translateX(-50%)} .joy-lbl.b{bottom:4%;left:50%;transform:translateX(-50%)}
+.knob{position:absolute;left:50%;top:50%;width:38%;aspect-ratio:1;margin:-19% 0 0 -19%;border-radius:50%;z-index:1;
+  background:radial-gradient(circle at 35% 30%,var(--line),var(--panel-hi) 60%);border:2px solid var(--amber);box-shadow:0 6px 18px rgba(0,0,0,.5)}
+
+.tilt{width:min(94cqw,86cqh);aspect-ratio:1;max-width:100%;position:relative;display:grid;place-items:center}
+.tilt svg{width:100%;height:100%;display:block}
+.tilt .track{fill:none;stroke:var(--line);stroke-width:10;stroke-linecap:round}
+.tilt .tick{fill:var(--amber)}
+.tilt .phone{fill:var(--panel-hi);stroke:var(--ink-dim);stroke-width:2}
+.tilt-cal{position:absolute;bottom:4%;left:50%;transform:translateX(-50%)}
+.tilt-msg{position:absolute;top:64%;left:0;right:0;margin:0;text-align:center;font-size:.8rem;line-height:1.3;color:var(--ink-dim);padding:0 10%}
+
+.readout{display:flex;justify-content:center;gap:6px;font-size:.78rem;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.readout b{color:var(--ink);font-weight:600;min-width:4ch;text-align:left}
+
+.dash{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:minmax(0,1fr) auto auto;gap:8px 8px;align-items:stretch}
+.cluster{grid-column:2;grid-row:1;position:relative;min-height:0;min-width:0}
+.cluster canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.shift{grid-row:1;width:52px;border-radius:14px;border:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;touch-action:none}
+.shift b{font-family:var(--font-display);font-weight:800;font-size:2rem;line-height:1}
+.shift span{font-size:.68rem;letter-spacing:.12em;color:var(--ink-dim);font-weight:600}
+.shift:active,.shift.flash{background:var(--panel-hi);border-color:var(--amber)}
+.shift.down{grid-column:1}.shift.up{grid-column:3}
+.drift-tag{position:absolute;left:50%;top:2%;transform:translateX(-50%);font-family:var(--font-display);font-weight:800;font-size:1.05rem;letter-spacing:.16em;
+  color:var(--amber);padding:2px 12px;border:1px solid var(--amber);border-radius:999px;background:var(--amber-soft);white-space:nowrap;font-variant-numeric:tabular-nums}
+.drift-tag b{color:var(--ink);margin-left:6px}
+.dash-row{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:5px 8px;display:flex;flex-direction:column;align-items:center;gap:0;line-height:1.15;touch-action:none}
+.chip span{font-size:.66rem;letter-spacing:.14em;color:var(--ink-dim);font-weight:600}
+.chip b{font-family:var(--font-display);font-weight:700;font-size:1rem;letter-spacing:.06em}
+.chip.on{border-color:var(--amber)} .chip.on b{color:var(--amber)}
+.chip:active{background:var(--panel-hi)}
+.em-row{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.em{display:grid;grid-template-columns:auto minmax(0,1fr) 7.5ch;align-items:center;gap:7px;font-size:.72rem;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.em span{letter-spacing:.1em;font-weight:600}
+.em b{color:var(--ink);font-family:var(--font-mono);font-weight:500;font-size:.72rem;text-align:right}
+.em-bar{height:6px;border-radius:3px;background:var(--panel-hi);position:relative;overflow:hidden}
+.em-bar::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--ink-dim)}
+.em-bar i{position:absolute;top:0;bottom:0;left:50%;width:0;background:var(--amber)}
+.em-bar i.neg{background:var(--nitro)}
+
+.pedal-zone{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1fr) minmax(0,1.15fr);grid-template-rows:minmax(0,1fr) auto;gap:8px}
+.pedal{position:relative;border-radius:18px 18px 12px 12px;border:1px solid var(--line);overflow:hidden;touch-action:none;container-type:inline-size;
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:12px;gap:2px;
+  background:repeating-linear-gradient(180deg,var(--panel-hi) 0 9px,var(--panel) 9px 15px)}
+.pedal .fill{position:absolute;left:0;right:0;bottom:0;height:calc(var(--v,0) * 100%);
+  background:linear-gradient(to top,var(--pc-soft),transparent);border-top:2px solid var(--pc);opacity:0;transition:opacity .08s}
+.pedal.on .fill{opacity:1}
+.pedal.on{border-color:var(--pc)}
+.pedal strong{position:relative;font-family:var(--font-display);font-weight:800;letter-spacing:.12em;font-size:min(1.15rem,21cqi)}
+.pedal small{position:relative;font-size:.66rem;color:var(--ink-dim);letter-spacing:.04em;text-align:center;padding:0 6px;line-height:1.25}
+@container (max-width:84px){.pedal small{display:none}}
+.pedal.gas{--pc:var(--amber);--pc-soft:var(--amber-soft)}
+.pedal.brake{--pc:var(--brake);--pc-soft:var(--brake-soft)}
+.hbrake{border-radius:14px;border:1px solid var(--line);background:var(--panel);touch-action:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:6px}
+.hbrake svg{width:min(70%,46px);height:auto}
+.hbrake .lever{fill:var(--panel-hi);stroke:var(--ink-dim);stroke-width:2}
+.hbrake .grip-b{fill:var(--ink-dim)}
+.hbrake strong{font-family:var(--font-display);font-weight:800;font-size:.95rem;letter-spacing:.1em;line-height:1.05;text-align:center}
+.hbrake.on{background:var(--brake-soft);border-color:var(--brake)}
+.hbrake.on .lever{stroke:var(--brake)} .hbrake.on .grip-b{fill:var(--brake)}
+.hbrake.on svg{transform:rotate(-18deg);transform-origin:50% 90%}
+.nitro{grid-column:1/-1;position:relative;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--panel);overflow:hidden;touch-action:none;
+  font-family:var(--font-display);font-weight:800;letter-spacing:.2em;font-size:1rem}
+.nitro i{position:absolute;left:0;top:0;bottom:0;width:calc(var(--t,1) * 100%);background:linear-gradient(90deg,rgba(88,182,255,.08),rgba(88,182,255,.32))}
+.nitro span{position:relative}
+.nitro.on{border-color:var(--nitro);color:var(--nitro)}
+
+@media (orientation:portrait){
+  .cockpit{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,1.05fr) minmax(0,1fr)}
+  .dash{grid-column:1/-1;grid-row:1}
+}
+@media (max-height:360px){.em-row{display:none}.readout{display:none}}
+@media (max-height:300px){.dash-row{display:none}}
+
+/* ---------- paneller ---------- */
+.backdrop{position:fixed;inset:0;background:var(--shade);z-index:40}
+.sheet{position:fixed;top:0;bottom:0;right:0;width:min(440px,100%);z-index:50;background:var(--panel);border-left:1px solid var(--line);
+  overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-user-select:text;user-select:text;
+  padding:calc(14px + env(safe-area-inset-top,0px)) max(18px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) 18px;
+  display:flex;flex-direction:column;gap:12px}
+.sheet header{display:flex;align-items:center;justify-content:space-between}
+.sheet h2{font-family:var(--font-display);font-weight:800;font-size:1.5rem;letter-spacing:.04em;margin:0}
+.sheet h3{font-family:var(--font-display);font-weight:700;font-size:.85rem;letter-spacing:.16em;color:var(--amber);margin:8px 0 0}
+.sheet section,.grp{display:grid;gap:12px}
+.sheet p{margin:0;color:var(--ink-dim);font-size:.9rem;line-height:1.45;max-width:62ch}
+.sheet ol,.sheet ul.support{margin:0;padding-left:20px;color:var(--ink-dim);font-size:.9rem;line-height:1.5;display:grid;gap:4px}
+.sheet ol b,.sheet p b,.sheet ul.support b{color:var(--ink)}
+.field{display:grid;gap:6px}
+.field>label,.range-row label{font-size:.9rem;font-weight:600}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:9px 6px;font-weight:600;font-size:.88rem;color:var(--ink-dim)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--amber);color:var(--on-amber)}
+.tog{display:flex;align-items:center;gap:12px;font-size:.92rem;cursor:pointer}
+.tog input{appearance:none;-webkit-appearance:none;width:42px;height:24px;border-radius:12px;background:var(--panel-hi);border:1px solid var(--line);position:relative;flex:none;margin:0;cursor:pointer}
+.tog input::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--ink-dim);transition:transform .15s}
+.tog input:checked{background:var(--amber);border-color:var(--amber)}
+.tog input:checked::after{transform:translateX(18px);background:var(--on-amber)}
+.range-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center}
+.range-row output{font-family:var(--font-mono);font-size:.82rem;color:var(--amber)}
+.range-row input{grid-column:1/-1;width:100%;accent-color:var(--amber)}
+.range-row small{grid-column:1/-1;color:var(--ink-dim);font-size:.78rem}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.keys{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;font-size:.86rem;color:var(--ink-dim)}
+.keys kbd{font-family:var(--font-mono);font-size:.75rem;color:var(--ink);background:var(--panel-hi);border:1px solid var(--line);border-radius:5px;padding:1px 6px;white-space:nowrap}
+code.cmd{display:block;font-family:var(--font-mono);font-size:.78rem;background:var(--cabin);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--amber);overflow-x:auto;white-space:nowrap}
+.sel{appearance:none;-webkit-appearance:none;width:100%;background:var(--panel-hi);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:8px 10px;font:inherit;font-size:.9rem}
+.ports{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ports label{display:grid;gap:4px;font-size:.8rem;color:var(--ink-dim);font-weight:600}
+
+/* cihaz listesi */
+.scan-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.scan-state{display:flex;align-items:center;gap:8px;color:var(--ink-dim);font-size:.9rem}
+.spin{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--amber);border-radius:50%;animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.need{border:1px solid var(--amber);background:var(--amber-soft);border-radius:12px;padding:12px;display:grid;gap:10px}
+.need p{color:var(--ink)}
+.dev-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.dev{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:10px;padding:10px 10px 10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel-hi)}
+.dev.maybe{border-style:dashed}
+.dev-ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;font-family:var(--font-display);font-weight:800;font-size:.78rem;letter-spacing:.04em;background:var(--cabin);border:1px solid var(--line);color:var(--amber)}
+.dev.maybe .dev-ico{color:var(--ink-dim)}
+.dev-main{min-width:0;display:grid;gap:1px}
+.dev-main b{font-weight:600;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dev-main small{color:var(--ink-dim);font-size:.76rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sig{display:flex;align-items:flex-end;gap:2px;height:16px}
+.sig i{width:4px;background:var(--line);border-radius:1px}
+.sig i:nth-child(1){height:25%}.sig i:nth-child(2){height:50%}.sig i:nth-child(3){height:75%}.sig i:nth-child(4){height:100%}
+.sig[data-l="1"] i:nth-child(-n+1),.sig[data-l="2"] i:nth-child(-n+2),.sig[data-l="3"] i:nth-child(-n+3),.sig[data-l="4"] i:nth-child(-n+4){background:var(--ok)}
+.dev .btn{height:34px;padding:0 12px;font-size:.88rem}
+.dev-pick{grid-column:1/-1;display:grid;gap:6px}
+.dev-pick p{font-size:.82rem}
+.dev-empty{text-align:center;padding:10px 4px}
+
+.help{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:60;width:min(520px,calc(100% - 32px));max-height:calc(100% - 32px);overflow-y:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;display:grid;gap:12px;touch-action:pan-y;-webkit-user-select:text;user-select:text}
+.help h2{font-family:var(--font-display);font-weight:800;font-size:1.35rem;margin:0}
+#helpBody{display:grid;gap:8px}
+.help p,.help ol{margin:0;color:var(--ink-dim);font-size:.92rem;line-height:1.5}
+.help ol{padding-left:20px;display:grid;gap:4px}
+.help b{color:var(--ink)}
+.help a{color:var(--amber)}
+.confirm-row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.toast{position:fixed;left:50%;top:calc(58px + env(safe-area-inset-top,0px));transform:translateX(-50%);z-index:70;max-width:calc(100% - 32px);
+  background:var(--panel-hi);border:1px solid var(--line);border-radius:10px;padding:9px 14px;font-size:.9rem;font-weight:600;text-align:center;
+  box-shadow:0 10px 30px rgba(0,0,0,.45);pointer-events:none;opacity:0;transition:opacity .2s}
+.toast.show{opacity:1}
+.toast.warn{border-color:var(--brake)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div id="app">
+  <header class="topbar">
+    <button class="btn primary" id="btnConnect">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>
+      <span id="connLabel">Bağlan</span>
+    </button>
+    <span class="pill" id="connPill" data-state="off"><i class="dot"></i><span id="connText">Robot yok · deneme modu</span></span>
+    <span class="pill hide-narrow" id="batPill">Pil <b id="batVal">—</b></span>
+    <span class="pill hide-narrow" id="padPill" hidden>Oyun kolu <b>bağlı</b></span>
+    <span class="spacer"></span>
+    <button class="btn estop" id="btnStop" aria-label="Acil durdur">DUR</button>
+    <button class="btn icon" id="btnFull" aria-label="Tam ekran">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+    <button class="btn icon" id="btnSettings" aria-label="Ayarlar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+    </button>
+  </header>
+
+  <main class="cockpit">
+    <section class="zone steer-zone" aria-label="Direksiyon">
+      <div class="steer-stage">
+        <div class="wheel" id="wheel">
+          <svg viewBox="0 0 200 200" id="wheelSvg" aria-hidden="true">
+            <path class="spoke" d="M74 104 L24 96 L24 112 L76 118 Z"/>
+            <path class="spoke" d="M126 104 L176 96 L176 112 L124 118 Z"/>
+            <path class="spoke" d="M90 124 L84 178 L116 178 L110 124 Z"/>
+            <circle class="rim" cx="100" cy="100" r="84"/>
+            <circle class="grip" cx="100" cy="100" r="84"/>
+            <circle class="rim-edge" cx="100" cy="100" r="94"/>
+            <circle class="rim-edge" cx="100" cy="100" r="74"/>
+            <rect class="marker" x="96" y="6" width="8" height="20" rx="2"/>
+            <circle class="hub" cx="100" cy="108" r="30"/>
+            <circle class="hub-ring" cx="100" cy="108" r="22"/>
+            <text class="hub-txt" x="100" y="113" text-anchor="middle">DRIFT</text>
+          </svg>
+        </div>
+        <div class="joy" id="joy" hidden>
+          <span class="joy-lbl t">GAZ</span><span class="joy-lbl b">FREN</span>
+          <div class="knob" id="knob"></div>
+        </div>
+        <div class="tilt" id="tilt" hidden>
+          <svg viewBox="0 0 200 200" aria-hidden="true">
+            <path class="track" d="M28 110 A72 72 0 0 1 172 110"/>
+            <g id="tiltNeedle"><rect class="tick" x="96" y="28" width="8" height="20" rx="3"/></g>
+            <g id="tiltPhone"><rect class="phone" x="70" y="88" width="60" height="32" rx="7"/></g>
+          </svg>
+          <p class="tilt-msg" id="tiltMsg">Telefonu direksiyon gibi sağa sola çevir</p>
+          <button class="btn tilt-cal" id="tiltCal">Ortala</button>
+        </div>
+      </div>
+      <div class="readout"><span id="steerLbl">Direksiyon</span><b id="steerVal">0°</b></div>
+    </section>
+
+    <section class="zone dash" aria-label="Gösterge">
+      <button class="shift down" id="gearDown" aria-label="Vites düşür"><b>−</b><span id="downLbl">VİTES</span></button>
+      <div class="cluster" id="cluster">
+        <canvas id="gauge"></canvas>
+        <div class="drift-tag" id="driftTag" hidden>DRIFT<b id="driftScore">0</b></div>
+      </div>
+      <button class="shift up" id="gearUp" aria-label="Vites yükselt"><b>+</b><span id="upLbl">VİTES</span></button>
+      <div class="dash-row">
+        <button class="chip" id="btnAM"><span>ŞANZIMAN</span><b id="amLbl">MANUEL</b></button>
+        <button class="chip" id="btnLights"><span>FARLAR</span><b id="lightsLbl">KAPALI</b></button>
+        <button class="chip" id="btnHorn"><span>KORNA</span><b>BİP</b></button>
+      </div>
+      <div class="em-row">
+        <div class="em"><span id="emL">SOL</span><div class="em-bar"><i id="barL"></i></div><b id="valL">0</b></div>
+        <div class="em"><span id="emR">SAĞ</span><div class="em-bar"><i id="barR"></i></div><b id="valR">0</b></div>
+      </div>
+    </section>
+
+    <section class="zone pedal-zone" aria-label="Pedallar">
+      <button class="hbrake" id="hbrake" aria-label="El freni">
+        <svg viewBox="0 0 40 70" aria-hidden="true"><rect class="lever" x="13" y="6" width="14" height="54" rx="7"/><rect class="grip-b" x="16" y="10" width="8" height="16" rx="4"/></svg>
+        <strong>EL<br>FRENİ</strong>
+      </button>
+      <div class="pedal brake" id="pedBrake"><i class="fill"></i><strong>FREN</strong><small>yukarısı sert</small></div>
+      <div class="pedal gas" id="pedGas"><i class="fill"></i><strong>GAZ</strong><small>yukarısı tam gaz</small></div>
+      <button class="nitro" id="nitro"><i id="nitroBar"></i><span>NİTRO</span></button>
+    </section>
+  </main>
+</div>
+
+<div class="backdrop" id="backdrop" hidden></div>
+
+<aside class="sheet" id="devSheet" role="dialog" aria-modal="true" aria-labelledby="devTitle" hidden>
+  <header><h2 id="devTitle">Robota bağlan</h2><button class="btn icon" id="devClose" aria-label="Kapat">✕</button></header>
+  <div id="devNative" hidden>
+    <section>
+      <div class="scan-bar">
+        <span class="scan-state"><i class="spin" id="scanSpin"></i><span id="scanText">Yakındaki cihazlar taranıyor…</span></span>
+        <button class="btn" id="devRescan">Yeniden tara</button>
+      </div>
+      <div class="need" id="devNeed" hidden><p id="needText"></p><div class="row"><button class="btn primary" id="needBtn">Tamam</button></div></div>
+      <ul class="dev-list" id="devList"></ul>
+      <p class="dev-empty" id="devEmpty" hidden>Robot bulunamadı. Robotun açık olduğundan ve başka bir telefona ya da uygulamaya bağlı olmadığından emin ol, sonra yeniden tara.</p>
+    </section>
+  </div>
+  <div id="devWeb" hidden>
+    <section>
+      <p>Bu tarayıcıda cihaz listesini tarayıcının kendi penceresi gösterir. Listeden robotunu seç, gerisini kumanda halleder.</p>
+      <div class="row"><button class="btn primary" id="devPick">Bluetooth cihazı seç</button></div>
+      <p>Cihaz listesinin uygulamanın içinde çıkması için <a href="https://github.com/ilerisoyomer34-coder/omer-ai-/releases/latest" target="_blank" rel="noopener" style="color:var(--amber)">Android uygulamasını</a> kullan.</p>
+    </section>
+  </div>
+  <label class="tog"><input type="checkbox" id="cShowAll" data-key="showAll"><span>Tanınmayan cihazları da göster</span></label>
+  <h3>DESTEKLENEN ROBOTLAR</h3>
+  <ul class="support">
+    <li><b>Makeblock</b> mBot2 ve mBot, fabrika yazılımıyla</li>
+    <li><b>LEGO</b> BOOST, City Hub, Technic Hub, Technic Move Hub</li>
+    <li><b>LEGO SPIKE</b> Prime ve Essential (SPIKE 3 yazılımı)</li>
+    <li><b>Arduino araba</b> HC-05, HC-06 veya HM-10 modüllü</li>
+  </ul>
+</aside>
+
+<aside class="sheet" id="settings" role="dialog" aria-modal="true" aria-labelledby="setTitle" hidden>
+  <header><h2 id="setTitle">Ayarlar</h2><button class="btn icon" id="setClose" aria-label="Kapat">✕</button></header>
+
+  <h3>KONTROL</h3>
+  <section>
+    <div class="field"><label>Direksiyon</label>
+      <div class="seg" data-key="steerMode"><button data-val="wheel">Simit</button><button data-val="tilt">Eğim</button><button data-val="joy">Joystick</button></div>
+    </div>
+    <div class="field"><label>Şanzıman</label>
+      <div class="seg" data-key="trans"><button data-val="manual">Manuel</button><button data-val="auto">Otomatik</button></div>
+    </div>
+    <p id="transHelp"></p>
+    <label class="tog"><input type="checkbox" id="cTank" data-key="tank"><span>Dururken yerinde dönebilsin</span></label>
+    <label class="tog"><input type="checkbox" id="cTiltInv" data-key="tiltInvert"><span>Eğim yönünü ters çevir</span></label>
+  </section>
+
+  <h3>HIZ VE SÜRÜŞ HİSSİ</h3>
+  <section>
+    <div class="range-row"><label for="rLimit">Hız sınırı</label><output id="oLimit"></output>
+      <input type="range" id="rLimit" data-key="limit" min="20" max="100" step="5"><small>Robotun çıkabileceği en yüksek hız. Ev içinde %60–70 rahat sürülür.</small></div>
+    <div class="range-row"><label for="rAccel">Hızlanma</label><output id="oAccel"></output>
+      <input type="range" id="rAccel" data-key="accel" min="10" max="100" step="5"><small>Düşük değer yumuşak kalkış, yüksek değer sert çekiş verir.</small></div>
+    <div class="range-row"><label for="rSteer">Direksiyon hassasiyeti</label><output id="oSteer"></output>
+      <input type="range" id="rSteer" data-key="steerSens" min="10" max="100" step="5"></div>
+    <div class="range-row"><label for="rDrift">Drift gücü</label><output id="oDrift"></output>
+      <input type="range" id="rDrift" data-key="drift" min="0" max="100" step="5"><small>El freni ve direksiyonla robotun ne kadar savrulacağı.</small></div>
+  </section>
+
+  <h3>ROBOT</h3>
+  <section>
+    <p id="robotInfo"></p>
+    <div class="grp" data-fam="mk">
+      <div class="field"><label>Makeblock modeli</label>
+        <div class="seg" data-key="mkModel"><button data-val="auto">Otomatik</button><button data-val="mbot2">mBot2</button><button data-val="mbot1">mBot</button></div>
+      </div>
+      <div class="field"><label>mBot2 motor sürüşü</label>
+        <div class="seg" data-key="motor"><button data-val="power">Güç (%)</button><button data-val="speed">Enkoder hız</button></div>
+      </div>
+      <p>Güç modu daha sert, araba gibi hissettirir. Enkoder modu tekerleri ölçülü döndürür, düz gitmesi daha iyidir.</p>
+      <label class="tog"><input type="checkbox" id="cScreen" data-key="screenGear"><span>Vitesi robotun ekranında göster</span></label>
+    </div>
+    <div class="grp" data-fam="lego" hidden>
+      <div class="field"><label>Sürüş düzeni</label>
+        <div class="seg" data-key="layout"><button data-val="tank">İki motor (tank)</button><button data-val="car">Araba (direksiyon motoru)</button></div>
+      </div>
+      <div class="ports">
+        <label for="pL">Sol motor<select class="sel" id="pL" data-key="portL"></select></label>
+        <label for="pR">Sağ motor<select class="sel" id="pR" data-key="portR"></select></label>
+        <label for="pS">Direksiyon<select class="sel" id="pS" data-key="portS"></select></label>
+      </div>
+      <p id="portsInfo"></p>
+      <div class="range-row"><label for="rSRange">Direksiyon açısı</label><output id="oSRange"></output>
+        <input type="range" id="rSRange" data-key="steerRange" min="20" max="180" step="5"><small>Araba düzeninde direksiyon motorunun sağa ve sola en fazla döneceği açı. Bağlanırken tekerlekleri düz tut.</small></div>
+      <label class="tog"><input type="checkbox" id="cInvS" data-key="invertS"><span>Direksiyon yönünü ters çevir</span></label>
+      <div class="field" data-only="spike"><label for="spSlot">SPIKE program yuvası</label><select class="sel" id="spSlot" data-key="spikeSlot"></select></div>
+      <p data-only="spike">Kumanda, SPIKE hub'ına bu yuvaya küçük bir köprü programı yükler. Yuvada başka bir program varsa yerine geçer.</p>
+    </div>
+    <label class="tog"><input type="checkbox" id="cInvL" data-key="invertL"><span>Sol motor yönünü ters çevir</span></label>
+    <label class="tog"><input type="checkbox" id="cInvR" data-key="invertR"><span>Sağ motor yönünü ters çevir</span></label>
+    <label class="tog"><input type="checkbox" id="cSwap" data-key="swapLR"><span>Sol ve sağ motoru değiştir</span></label>
+    <label class="tog"><input type="checkbox" id="cBrakeL" data-key="brakeLights"><span>Fren ve geri vites ışığı</span></label>
+    <div class="row"><button class="btn" id="testL">Sol teker testi</button><button class="btn" id="testR">Sağ teker testi</button></div>
+    <p>Testte sol teker yerine sağ dönerse <b>Sol ve sağ motoru değiştir</b>'i aç. Bir teker geriye dönerse o tarafın <b>yönünü ters çevir</b> ayarını aç.</p>
+  </section>
+
+  <h3>SES VE TİTREŞİM</h3>
+  <section>
+    <label class="tog"><input type="checkbox" id="cSound" data-key="sound"><span>Telefonda motor sesi</span></label>
+    <label class="tog"><input type="checkbox" id="cHapt" data-key="haptics"><span>Titreşim (vites, drift)</span></label>
+  </section>
+
+  <h3>KLAVYE VE OYUN KOLU</h3>
+  <section class="keys">
+    <kbd>W / ↑</kbd><span>Gaz · kolda RT</span>
+    <kbd>S / ↓</kbd><span>Fren · kolda LT</span>
+    <kbd>A D / ← →</kbd><span>Direksiyon · kolda sol çubuk</span>
+    <kbd>Boşluk</kbd><span>El freni · kolda A</span>
+    <kbd>Shift</kbd><span>Nitro · kolda X veya B</span>
+    <kbd>E / Q</kbd><span>Vites yükselt / düşür · kolda RB / LB</span>
+    <kbd>H · L · M</kbd><span>Korna · farlar · manuel/otomatik</span>
+    <kbd>X</kbd><span>Acil durdur</span>
+  </section>
+
+  <h3>BAĞLANTI</h3>
+  <section>
+    <div class="field"><label>Robota giden son komut</label><code class="cmd" id="lastCmd">—</code></div>
+    <p id="appInfo"></p>
+    <button class="btn" id="resetCfg">Ayarları sıfırla</button>
+  </section>
+</aside>
+
+<div class="help" id="btHelp" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
+  <h2 id="helpTitle">Bluetooth açılamadı</h2>
+  <div id="helpBody"></div>
+  <div class="confirm-row"><button class="btn" id="helpCancel" hidden>Vazgeç</button><button class="btn primary" id="helpClose">Tamam</button></div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const approach = (x, target, step) => x < target ? Math.min(target, x + step) : Math.max(target, x - step);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const u8 = a => Uint8Array.from(a);
+const NATIVE = typeof window.NativeBT === 'object' && window.NativeBT !== null;
+const APK_URL = 'https://github.com/ilerisoyomer34-coder/omer-ai-/releases/latest';
+const WEB_URL = 'https://raw.githack.com/ilerisoyomer34-coder/omer-ai-/drift-kumanda/web/index.html';
+
+/* ================= Ayarlar ================= */
+const DEFAULTS = { steerMode:'wheel', trans:'manual', limit:100, accel:65, steerSens:65, drift:70, motor:'power',
+  invertL:false, invertR:false, swapLR:false, invertS:false, tank:false, sound:true, haptics:true, brakeLights:true, screenGear:true, tiltInvert:false,
+  showAll:false, mkModel:'auto', layout:'tank', portL:'auto', portR:'auto', portS:'auto', steerRange:70, spikeSlot:19, spikeOk:false, lastFam:'mk' };
+const STORE = 'mbot2-drift-kumanda';
+let cfg = { ...DEFAULTS };
+try {
+  const raw = localStorage.getItem(STORE);
+  if (raw) {
+    const old = JSON.parse(raw);
+    if (old.invertFwd) { old.invertL = true; old.invertR = true; }
+    if (old.allDevices) old.showAll = true;
+    delete old.invertFwd; delete old.allDevices;
+    cfg = { ...DEFAULTS, ...old };
+  }
+} catch (e) {}
+const saveCfg = () => { try { localStorage.setItem(STORE, JSON.stringify(cfg)); } catch (e) {} };
+const te = new TextEncoder(), td = new TextDecoder();
+
+/* ================= Robot protokolleri ================= */
+const UU = {
+  mk:    { fam:'mk',    svc:'0000ffe1-0000-1000-8000-00805f9b34fb', tx:'0000ffe3-0000-1000-8000-00805f9b34fb', rx:'0000ffe2-0000-1000-8000-00805f9b34fb' },
+  lego:  { fam:'lego',  svc:'00001623-1212-efde-1623-785feabcd123', tx:'00001624-1212-efde-1623-785feabcd123', rx:'00001624-1212-efde-1623-785feabcd123' },
+  spike: { fam:'spike', svc:'0000fd02-0000-1000-8000-00805f9b34fb', tx:'0000fd02-0001-1000-8000-00805f9b34fb', rx:'0000fd02-0002-1000-8000-00805f9b34fb' },
+  ard:   { fam:'ard',   svc:'0000ffe0-0000-1000-8000-00805f9b34fb', tx:'0000ffe1-0000-1000-8000-00805f9b34fb', rx:'0000ffe1-0000-1000-8000-00805f9b34fb' },
+};
+const FAM_ORDER = ['spike', 'lego', 'mk', 'ard'];
+const ALL_SVCS = FAM_ORDER.map(f => UU[f].svc);
+
+/* --- mBot2: CyberPi canlı mod, f3/f4 çerçeve --- */
+const F3_ONLINE = u8([0xF3,0xF6,0x03,0x00,0x0D,0x00,0x01,0x0E,0xF4]);
+function buildFrame(script, idx, withResp) {
+  const sb = te.encode(script);
+  const data = new Uint8Array(sb.length + 2);
+  data[0] = sb.length & 0xff; data[1] = (sb.length >> 8) & 0xff; data.set(sb, 2);
+  const mode = withResp ? 1 : 0, lo = idx & 0xff, hi = (idx >> 8) & 0xff;
+  const len = data.length + 4;
+  const out = new Uint8Array(len + 6);
+  out[0] = 0xF3; out[1] = (((len >> 8) & 0xff) + (len & 0xff) + 0xF3) & 0xff;
+  out[2] = len & 0xff; out[3] = (len >> 8) & 0xff;
+  out[4] = 0x28; out[5] = mode; out[6] = lo; out[7] = hi;
+  out.set(data, 8);
+  let sum = 0x28 + mode + lo + hi;
+  for (let i = 0; i < data.length; i++) sum += data[i];
+  out[8 + data.length] = sum & 0xff; out[9 + data.length] = 0xF4;
+  return out;
+}
+
+class F3Parser {
+  constructor() { this.buf = []; this.rx = false; this.len = 0; }
+  feed(bytes) { const out = []; for (const b of bytes) { const r = this.byte(b); if (r) out.push(r); } return out; }
+  byte(b) {
+    this.buf.push(b);
+    const n = this.buf.length;
+    if (n > 3) {
+      const b3 = this.buf[n-4], b2 = this.buf[n-3], b1 = this.buf[n-2], b0 = this.buf[n-1];
+      if (b3 === 0xF3 && ((b0 + b1 + b3) & 0xff) === b2) { this.buf = [0xF3, b2, b1, b0]; this.len = b1 + (b0 << 8); this.rx = true; }
+    }
+    if (this.rx) {
+      if (this.buf.length === this.len + 6 && this.buf[0] === 0xF3) { const fr = this.buf; this.buf = []; this.rx = false; this.len = 0; return this.parse(fr); }
+      if (this.buf.length > 4096) { this.buf = []; this.rx = false; this.len = 0; }
+    } else if (this.buf.length > 64) this.buf = this.buf.slice(-4);
+    return null;
+  }
+  parse(fr) {
+    if (fr.length < 10 || fr[4] !== 0x28) return null;
+    const idx = fr[6] + (fr[7] << 8);
+    const data = fr.slice(8, fr.length - 2);
+    if (data.length < 3) return null;
+    const raw = td.decode(new Uint8Array(data.slice(2)));
+    let val = null;
+    try { val = JSON.parse(raw).ret; } catch (e) { const m = raw.match(/["']ret["']\s*:\s*([^}]*)/); if (m) val = m[1].trim(); }
+    return { idx, val, raw };
+  }
+}
+
+/* --- mBot (mCore): ff 55 protokolü --- */
+const MC = {
+  motor(port, v) { const s = Math.round(clamp(v, -255, 255)) & 0xffff; return u8([0xff,0x55,0x06,0x00,0x02,0x0a,port, s & 0xff, s >> 8]); },
+  led(r, g, b) { return u8([0xff,0x55,0x09,0x00,0x02,0x08,0x07,0x02,0x00,r,g,b]); },
+  tone(hz, ms) { return u8([0xff,0x55,0x07,0x00,0x02,0x22, hz & 0xff, hz >> 8, ms & 0xff, ms >> 8]); },
+  version: u8([0xff,0x55,0x03,0x00,0x01,0x00]),
+};
+
+/* --- LEGO Wireless Protocol 3 (BOOST, City, Technic) --- */
+const LWP = {
+  msg: (...body) => u8([body.length + 2, 0x00, ...body]),
+  power: (port, p) => LWP.msg(0x81, port, 0x11, 0x51, 0x00, p & 0xff),
+  goto: (port, deg, speed, maxP) => { const d = deg | 0; return LWP.msg(0x81, port, 0x11, 0x0d, d & 0xff, (d >> 8) & 0xff, (d >> 16) & 0xff, (d >> 24) & 0xff, speed & 0xff, maxP, 0x7e, 0x00); },
+  preset: port => LWP.msg(0x81, port, 0x11, 0x51, 0x02, 0, 0, 0, 0),
+  ledMode: () => LWP.msg(0x41, 0x32, 0x00, 1, 0, 0, 0, 0x00),
+  led: c => LWP.msg(0x81, 0x32, 0x11, 0x51, 0x00, c),
+  prop: (p, op) => LWP.msg(0x01, p, op),
+};
+const LEGO_KIND = { 0x20:'DUPLO tren', 0x40:'LEGO BOOST', 0x41:'LEGO City Hub', 0x42:'LEGO kumanda', 0x80:'LEGO Technic Hub', 0x81:'SPIKE Prime', 0x83:'SPIKE Essential', 0x84:'Technic Move Hub' };
+const LWP_MOTORS = new Set([1, 2, 38, 39, 41, 46, 47, 48, 49, 65, 75, 76]);
+
+/* --- LEGO SPIKE (hub OS 3): COBS + XOR çerçeve --- */
+const SPK = {
+  cobs(data) {
+    const out = [0xff]; let ci = 0, block = 1;
+    for (const b of data) {
+      if (b > 2) { out.push(b); block++; }
+      if (b <= 2 || block > 84) { if (b <= 2) out[ci] = b * 84 + block + 2; ci = out.length; out.push(0xff); block = 1; }
+    }
+    out[ci] = block + 2; return out;
+  },
+  uncobs(data) {
+    const out = [];
+    if (!data.length) return u8(out);
+    const unesc = c => { if (c === 0xff) return [undefined, 85]; let v = Math.floor((c - 2) / 84), bl = (c - 2) % 84; if (bl === 0) { bl = 84; v--; } return [v, bl]; };
+    let [v, bl] = unesc(data[0]);
+    for (let i = 1; i < data.length; i++) { bl--; if (bl > 0) { out.push(data[i]); continue; } if (v !== undefined) out.push(v); [v, bl] = unesc(data[i]); }
+    return u8(out);
+  },
+  pack(data) { const e = SPK.cobs(data); const f = new Uint8Array(e.length + 1); for (let i = 0; i < e.length; i++) f[i] = e[i] ^ 3; f[e.length] = 0x02; return f; },
+  unpack(frame) { const x = frame.map(b => b ^ 3); return SPK.uncobs(x); },
+  pad4(d) { if (d.length % 4 === 0) return d; const p = new Uint8Array(d.length + 4 - d.length % 4); p.set(d); return p; },
+  crc32(d, seed) { let c = (seed ^ 0xffffffff) >>> 0; for (const b of d) { c ^= b; for (let k = 0; k < 8; k++) c = ((c >>> 1) ^ (0xedb88320 & -(c & 1))) >>> 0; } return (c ^ 0xffffffff) >>> 0; },
+  info: () => SPK.pack(u8([0x00])),
+  notify: ms => SPK.pack(u8([0x28, ms & 0xff, ms >> 8])),
+  clear: slot => SPK.pack(u8([0x46, slot])),
+  upload(name, slot, crc) { const m = new Uint8Array(38); m[0] = 0x0c; m.set(te.encode(name).slice(0, 31), 1); m[33] = slot; new DataView(m.buffer).setUint32(34, crc >>> 0, true); return SPK.pack(m); },
+  chunk(data, crc) { const m = new Uint8Array(7 + data.length); m[0] = 0x10; const dv = new DataView(m.buffer); dv.setUint32(1, crc >>> 0, true); dv.setUint16(5, data.length, true); m.set(data, 7); return SPK.pack(m); },
+  start: slot => SPK.pack(u8([0x1e, 0x00, slot])),
+  tunnel(text) { const b = te.encode(text); const m = new Uint8Array(3 + b.length); m[0] = 0x32; m[1] = b.length & 0xff; m[2] = b.length >> 8; m.set(b, 3); return SPK.pack(m); },
+};
+class SpkAssembler {
+  constructor() { this.low = []; this.high = null; }
+  push(bytes) {
+    const out = [];
+    for (const b of bytes) {
+      if (b === 0x01) { this.high = []; continue; }
+      if (b === 0x02) {
+        const t = this.high || this.low;
+        if (t.length) { try { out.push(SPK.unpack(u8(t))); } catch (e) {} }
+        if (this.high) this.high = null; else this.low = [];
+      } else (this.high || this.low).push(b);
+    }
+    return out;
+  }
+}
+function spikeProgram(p) {
+  const st = p.s ? 'port.' + p.s : 'None';
+  return `import hub, motor, motor_pair, runloop
+from hub import port
+try:
+    from hub import light
+except:
+    light = None
+try:
+    from hub import light_matrix
+except:
+    light_matrix = None
+try:
+    from hub import sound
+except:
+    sound = None
+L = port.${p.l}
+R = port.${p.r}
+ST = ${st}
+VM = 1000
+tun = hub.config['module_tunnel']
+buf = [b'']
+st = [0, 0, 0, 0]
+ev = []
+def send(s):
+    try:
+        tun.send((s + '\\n').encode())
+    except:
+        pass
+def on_msg(d):
+    try:
+        if isinstance(d, str):
+            d = d.encode()
+        b = buf[0] + bytes(d)
+        while b'\\n' in b:
+            i = b.find(b'\\n')
+            q = b[:i].decode().split()
+            b = b[i + 1:]
+            if not q:
+                continue
+            if q[0] == 'D' or q[0] == 'C':
+                st[0] = 1 if q[0] == 'D' else 2
+                st[1] = int(q[1])
+                st[2] = int(q[2])
+                st[3] = 1
+            elif len(ev) < 8:
+                ev.append(q)
+        buf[0] = b
+    except Exception as e:
+        buf[0] = b''
+def stop_all():
+    try:
+        motor_pair.stop(motor_pair.PAIR_1)
+    except:
+        pass
+async def main():
+    motor_pair.pair(motor_pair.PAIR_1, L, R)
+    if ST is not None:
+        try:
+            motor.reset_relative_position(ST, 0)
+        except:
+            pass
+    tun.callback(on_msg)
+    send('ready')
+    idle = 0
+    ls = 0
+    while True:
+        if st[3]:
+            st[3] = 0
+            idle = 0
+            m = st[0]
+            a = st[1]
+            b = st[2]
+            try:
+                if m == 1:
+                    if a == 0 and b == 0:
+                        stop_all()
+                    else:
+                        motor_pair.move_tank(motor_pair.PAIR_1, a * VM // 100, b * VM // 100)
+                elif m == 2:
+                    if a == 0:
+                        stop_all()
+                    else:
+                        motor_pair.move_tank(motor_pair.PAIR_1, a * VM // 100, a * VM // 100)
+                    if ST is not None and b != ls:
+                        ls = b
+                        motor.run_to_relative_position(ST, b, 800)
+            except Exception as e:
+                send('err ' + str(e))
+        else:
+            idle += 1
+            if idle == 100:
+                stop_all()
+        while ev:
+            q = ev.pop(0)
+            try:
+                k = q[0]
+                if k == 'S':
+                    st[0] = 0
+                    stop_all()
+                elif k == 'L' and light:
+                    light.color(light.POWER, int(q[1]))
+                elif k == 'B' and sound:
+                    sound.beep(int(q[1]), int(q[2]), 70)
+                elif k == 'G' and light_matrix:
+                    light_matrix.write(q[1][-1])
+            except Exception as e:
+                send('err ' + str(e))
+        await runloop.sleep_ms(10)
+runloop.run(main())
+`;
+}
+
+/* ================= Bağlantı katmanı ================= */
+function b64enc(u) { let s = ''; for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s); }
+function b64dec(s) { const b = atob(s); const u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+
+let curNative = null;
+window.__nbt = e => {
+  try {
+    if (e.t === 'scan') devAdd(e.d);
+    else if (e.t === 'scanstate') setScanning(e.on);
+    else if (e.t === 'need') showNeed(e.what);
+    else if (curNative) curNative.event(e);
+    if (e.t === 'err' && !curNative) toast(e.msg, true);
+  } catch (x) {}
+};
+
+class NativeTr {
+  constructor(dev) { this.dev = dev; this.mtu = 23; this.wid = 0; this.waits = new Map(); this.onData = null; this.onClose = null; this.pending = null; this.closed = false; }
+  open(uu) {
+    curNative = this;
+    return new Promise((res, rej) => {
+      const t = setTimeout(() => { if (this.pending) { this.pending = null; rej(new Error('Robot yanıt vermedi')); try { NativeBT.disconnect(); } catch (e) {} } }, 22000);
+      this.pending = { res, rej, t };
+      try {
+        if (this.dev.kind === 'classic') NativeBT.connectClassic(this.dev.id);
+        else NativeBT.connectBle(this.dev.id, uu.svc, uu.tx, uu.rx || '');
+      } catch (e) { clearTimeout(t); this.pending = null; rej(e); }
+    });
+  }
+  settle(err) { const p = this.pending; if (!p) return false; this.pending = null; clearTimeout(p.t); if (err) p.rej(err); else p.res(); return true; }
+  event(e) {
+    if (e.t === 'conn') { this.mtu = e.mtu || 23; this.settle(null); }
+    else if (e.t === 'data') { if (this.onData) this.onData(b64dec(e.b)); }
+    else if (e.t === 'wrote') { const w = this.waits.get(e.id); if (w) { this.waits.delete(e.id); w(); } }
+    else if (e.t === 'err') { if (!this.settle(new Error(e.msg))) toast(e.msg, true); }
+    else if (e.t === 'disc') {
+      this.waits.forEach(w => w()); this.waits.clear();
+      if (!this.settle(new Error(e.why === 'user' ? 'Bağlantı kapatıldı' : (e.why || 'Bağlantı kurulamadı'))) && !this.closed) { this.closed = true; if (this.onClose) this.onClose(); }
+    }
+  }
+  get maxWrite() { return Math.max(20, this.mtu - 3); }
+  write(chunk) {
+    return new Promise(res => {
+      const id = ++this.wid;
+      const t = setTimeout(() => { this.waits.delete(id); res(); }, 800);
+      this.waits.set(id, () => { clearTimeout(t); res(); });
+      try { NativeBT.write(id, b64enc(chunk)); } catch (e) { clearTimeout(t); this.waits.delete(id); res(); }
+    });
+  }
+  close() { this.closed = true; try { NativeBT.disconnect(); } catch (e) {} }
+  dispose() { if (curNative === this) curNative = null; }
+}
+
+class WebTr {
+  constructor(device) {
+    this.device = device; this.onData = null; this.onClose = null; this.closed = false; this.maxWrite = 20;
+    this._disc = () => { if (!this.closed) { this.closed = true; if (this.onClose) this.onClose(); } };
+    device.addEventListener('gattserverdisconnected', this._disc);
+  }
+  async open(uu) {
+    const server = await this.device.gatt.connect();
+    let svc = null;
+    const order = uu ? [uu] : FAM_ORDER.map(f => UU[f]);
+    for (const u of order) { try { svc = await server.getPrimaryService(u.svc); this.uu = u; break; } catch (e) {} }
+    if (!svc) { try { this.device.gatt.disconnect(); } catch (e) {} throw new Error('Bu cihazda tanıdığım bir robot servisi yok'); }
+    this.tx = await svc.getCharacteristic(this.uu.tx);
+    this.rx = null;
+    if (this.uu.rx) { try { this.rx = this.uu.rx === this.uu.tx ? this.tx : await svc.getCharacteristic(this.uu.rx); } catch (e) {} }
+    if (this.rx && (this.rx.properties.notify || this.rx.properties.indicate)) {
+      this._on = ev => { const dv = ev.target.value; if (this.onData) this.onData(new Uint8Array(dv.buffer.slice(dv.byteOffset, dv.byteOffset + dv.byteLength))); };
+      this.rx.addEventListener('characteristicvaluechanged', this._on);
+      await this.rx.startNotifications();
+    }
+    this.noResp = !!this.tx.properties.writeWithoutResponse && typeof this.tx.writeValueWithoutResponse === 'function';
+    this.closed = false;
+    return this.uu.fam;
+  }
+  write(chunk) { return (this.noResp ? this.tx.writeValueWithoutResponse(chunk) : this.tx.writeValue(chunk)).catch(() => {}); }
+  close() { this.closed = true; try { this.device.gatt.disconnect(); } catch (e) {} }
+  dispose() {
+    try { this.device.removeEventListener('gattserverdisconnected', this._disc); } catch (e) {}
+    try { if (this.rx && this._on) this.rx.removeEventListener('characteristicvaluechanged', this._on); } catch (e) {}
+  }
+}
+
+/* Gönderim kuyruğu: komutları sıraya koyar, aynı türden bekleyenleri birleştirir */
+class Link {
+  constructor(tr) { this.tr = tr; this.chunk = 20; this.gap = 0; this.chain = Promise.resolve(); this.busy = 0; this.q = new Map(); this.ready = false; this.sig = {}; this.sigAt = {}; }
+  async writeFrame(f) {
+    for (let i = 0; i < f.length; i += this.chunk) {
+      await this.tr.write(f.subarray(i, i + this.chunk));
+      if (this.gap && i + this.chunk < f.length) await sleep(this.gap);
+    }
+  }
+  raw(frames) {
+    const list = Array.isArray(frames) ? frames : [frames];
+    this.busy++;
+    const p = this.chain.then(async () => { for (let f of list) { if (typeof f === 'function') f = f(); await this.writeFrame(f); } })
+      .catch(() => {}).finally(() => { this.busy--; this.pump(); });
+    this.chain = p;
+    return p;
+  }
+  put(key, frames, sig, keepMs) {
+    if (sig !== undefined) {
+      const now = performance.now();
+      if (this.sig[key] === sig && (!keepMs || now - this.sigAt[key] < keepMs)) return;
+      this.sig[key] = sig; this.sigAt[key] = now;
+    }
+    this.q.delete(key); this.q.set(key, frames); this.pump();
+  }
+  pump() {
+    if (!this.ready || this.busy) return;
+    const it = this.q.entries().next();
+    if (it.done) return;
+    const [k, f] = it.value; this.q.delete(k);
+    this.raw(f);
+  }
+  clear() { this.q.clear(); this.sig = {}; this.sigAt = {}; }
+}
+
+/* ================= Robot sürücüleri ================= */
+function sides(L, R) {
+  if (cfg.swapLR) { const t = L; L = R; R = t; }
+  if (cfg.invertL) L = -L;
+  if (cfg.invertR) R = -R;
+  return [L, R];
+}
+const FX_RGB = { off:[0,0,0], lights:[255,190,110], reverse:[255,255,255], brake:[255,0,0], nitro:[0,110,255], drift:[255,120,0] };
+const FX_IDX = { off:6, lights:10, reverse:10, brake:9, nitro:3, drift:8 };
+const PORTS = 'ABCDEF';
+
+function makeMbot2() {
+  const d = { fam:'mk', model:'mbot2', label:'mBot2', chunk:20, gap:6, hasScreen:true, car:false, idx:1, parser:new F3Parser(), pending:new Map(), lastReply:0, shook:false };
+  d.shape = () => cfg.motor;
+  d.next = () => { const i = d.idx; d.idx = (d.idx % 0xFFFE) + 1; return i; };
+  d.onData = bytes => { for (const r of d.parser.feed(bytes)) { d.lastReply = performance.now(); const cb = d.pending.get(r.idx); if (cb) { d.pending.delete(r.idx); cb(r.val); } } };
+  d.req = (link, expr, ms) => new Promise(res => {
+    const idx = d.next();
+    const t = setTimeout(() => { d.pending.delete(idx); res(undefined); }, ms);
+    d.pending.set(idx, v => { clearTimeout(t); res(v); });
+    link.raw(buildFrame(expr, idx, true));
+  });
+  d.run = s => buildFrame(s, d.next(), false);
+  d.script = (L, R) => {
+    [L, R] = sides(L, R);
+    const e1 = L, e2 = -R;
+    return cfg.motor === 'speed' ? `mbot2.drive_speed(${Math.round(e1 * 2)},${Math.round(e2 * 2)})` : `mbot2.drive_power(${Math.round(e1)},${Math.round(e2)})`;
+  };
+  d.handshake = async link => {
+    await link.raw(F3_ONLINE);
+    await sleep(500);
+    const t0 = performance.now();
+    for (let i = 0; i < 12; i++) { const v = await d.req(link, 'cyberpi.get_bri()', 500); if (v !== undefined || d.lastReply > t0) break; }
+    d.shook = true;
+  };
+  d.init = async link => {
+    if (!d.shook) await d.handshake(link);
+    d.idx = 1;
+    link.raw([d.run(d.script(0, 0)), d.run('cyberpi.led.on(0,255,90)')]);
+  };
+  d.drive = (link, L, R) => { const s = d.script(L, R); link.put('drive', () => d.run(s), s, 450); return s; };
+  d.fx = (link, fx) => link.put('led', () => d.run(`cyberpi.led.on(${FX_RGB[fx].join(',')})`), fx);
+  d.screen = (link, g) => link.put('screen', () => d.run(`cyberpi.display.show_label('${g}',32,'center')`), g);
+  d.horn = link => link.put('horn', () => d.run('cyberpi.audio.play_tone(392,0.18)'));
+  d.estop = link => { link.clear(); return link.raw([d.run('mbot2.EM_stop()'), d.run(d.script(0, 0))]); };
+  d.battery = async link => { const v = await d.req(link, 'cyberpi.get_battery()', 1500); const n = Number(v); return v === undefined || v === null || isNaN(n) ? undefined : n; };
+  return d;
+}
+
+function makeMbot1() {
+  const d = { fam:'mk', model:'mbot1', label:'mBot', chunk:20, gap:6, hasScreen:false, car:false };
+  d.shape = () => 'power';
+  d.onData = () => {};
+  d.frames = (L, R) => { [L, R] = sides(L, R); const a = Math.round(-L * 2.55), b = Math.round(R * 2.55); return { f:[MC.motor(0x09, a), MC.motor(0x0a, b)], s:`M1 ${a} · M2 ${b}` }; };
+  d.init = async link => { link.raw([...d.frames(0, 0).f, MC.led(0, 255, 90)]); };
+  d.drive = (link, L, R) => { const x = d.frames(L, R); link.put('drive', x.f, x.s, 450); return x.s; };
+  d.fx = (link, fx) => link.put('led', MC.led(...FX_RGB[fx]), fx);
+  d.horn = link => link.put('horn', MC.tone(392, 180));
+  d.estop = link => { link.clear(); return link.raw(d.frames(0, 0).f); };
+  return d;
+}
+
+async function detectMakeblock(link, tr) {
+  if (cfg.mkModel === 'mbot1') return makeMbot1();
+  const m2 = makeMbot2();
+  if (cfg.mkModel === 'mbot2') return m2;
+  let mcore = false;
+  tr.onData = b => { m2.onData(b); for (let i = 0; i + 1 < b.length; i++) if (b[i] === 0xff && b[i + 1] === 0x55) mcore = true; };
+  await link.raw(F3_ONLINE);
+  await sleep(400);
+  const t0 = performance.now();
+  for (let i = 0; i < 6; i++) {
+    const v = await m2.req(link, 'cyberpi.get_bri()', 400);
+    if (v !== undefined || m2.lastReply > t0) { m2.shook = true; return m2; }
+    if (mcore) return makeMbot1();
+    await link.raw(MC.version);
+    await sleep(150);
+    if (mcore) return makeMbot1();
+  }
+  m2.shook = true;
+  return m2;
+}
+
+function makeLego(kind) {
+  const d = { fam:'lego', label: LEGO_KIND[kind] || 'LEGO hub', kind, chunk:20, gap:0, hasScreen:false, car:true, motors:new Map(), bat:undefined };
+  d.shape = () => 'power';
+  d.onData = b => {
+    let i = 0;
+    while (i + 2 < b.length) {
+      let n = b[i], h = 1;
+      if (n & 0x80) { n = (n & 0x7f) | (b[i + 1] << 7); h = 2; }
+      if (n < 3) break;
+      d.msg(b[i + h + 1], b.subarray(i, i + n), h + 1);
+      i += n;
+    }
+  };
+  d.msg = (t, m, o) => {
+    if (t === 0x01 && m[o + 2] === 0x06) {
+      if (m[o + 1] === 0x06) d.bat = m[o + 3];
+      if (m[o + 1] === 0x0b) { d.kind = m[o + 3]; if (LEGO_KIND[d.kind]) d.label = LEGO_KIND[d.kind]; refreshRobotUI(); }
+    } else if (t === 0x04) {
+      const port = m[o + 1], ev = m[o + 2];
+      if (ev === 1) { const type = m[o + 3] | (m[o + 4] << 8); if (LWP_MOTORS.has(type)) d.motors.set(port, type); else d.motors.delete(port); }
+      else if (ev === 0) d.motors.delete(port);
+      refreshRobotUI();
+    }
+  };
+  d.found = () => [...d.motors.keys()].filter(p => p < 6).sort((a, b) => a - b);
+  d.ports = () => {
+    const ext = d.found();
+    let l, r, s;
+    if (d.kind === 0x40) { l = 0; r = 1; s = ext.find(p => p >= 2) ?? 2; }
+    else { l = ext[0] ?? 0; r = ext[1] ?? 1; s = ext[2] ?? 2; }
+    const pick = (k, def) => cfg[k] !== 'auto' ? PORTS.indexOf(cfg[k]) : def;
+    return { l: pick('portL', l), r: pick('portR', r), s: pick('portS', s) };
+  };
+  d.init = async link => {
+    await sleep(300);
+    link.raw([LWP.prop(0x0b, 0x05), LWP.ledMode(), LWP.prop(0x06, 0x02), LWP.prop(0x06, 0x05)]);
+    await sleep(500);
+    d.reconfig(link);
+    link.raw(LWP.led(6));
+  };
+  d.reconfig = link => { if (cfg.layout === 'car') link.raw(LWP.preset(d.ports().s)); };
+  d.drive = (link, L, R) => {
+    [L, R] = sides(L, R);
+    const p = d.ports(), a = Math.round(L), b = Math.round(R);
+    const s = `${PORTS[p.l]} ${a}% · ${PORTS[p.r]} ${b}%`;
+    link.put('drive', p.l === p.r ? [LWP.power(p.l, a)] : [LWP.power(p.l, a), LWP.power(p.r, b)], s, 450);
+    return s;
+  };
+  d.carDrive = (link, D, S) => {
+    const p = d.ports();
+    const [a, b] = sides(Math.round(D), Math.round(D));
+    const ang = Math.round(S * cfg.steerRange / 2) * 2 * (cfg.invertS ? -1 : 1);
+    const s = `${PORTS[p.l]} ${a}% · ${PORTS[p.r]} ${b}% · ${PORTS[p.s]} ${ang}°`;
+    link.put('drive', p.l === p.r ? [LWP.power(p.l, a)] : [LWP.power(p.l, a), LWP.power(p.r, b)], `${a},${b}`, 450);
+    link.put('steer', LWP.goto(p.s, ang, 100, 100), `${p.s}:${ang}`);
+    return s;
+  };
+  d.fx = (link, fx) => link.put('led', LWP.led(FX_IDX[fx]), fx);
+  d.estop = link => {
+    link.clear();
+    const p = d.ports();
+    const r = link.raw([LWP.power(p.l, 127), LWP.power(p.r, 127)]);
+    setTimeout(() => link.raw([LWP.power(p.l, 0), LWP.power(p.r, 0)]), 400);
+    return r;
+  };
+  d.battery = async () => d.bat;
+  return d;
+}
+
+function makeSpike() {
+  const d = { fam:'spike', label:'LEGO SPIKE', chunk:20, gap:0, hasScreen:true, car:true, asm:new SpkAssembler(), waits:new Map(), motorPorts:[], bat:undefined, ready:false, gotNotif:false, used:null };
+  d.shape = () => 'speed';
+  d.onData = b => { for (const m of d.asm.push(b)) d.msg(m); };
+  const SIZES = { 0x00:2, 0x01:21, 0x02:26, 0x0a:12, 0x0b:4, 0x0c:9, 0x0d:4, 0x0e:11 };
+  d.msg = m => {
+    const t = m[0];
+    const q = d.waits.get(t);
+    if (q && q.length) q.shift()(m);
+    if (t === 0x32) {
+      const n = m[1] | (m[2] << 8);
+      for (const line of td.decode(m.subarray(3, 3 + n)).split('\n')) {
+        if (line.trim() === 'ready') { d.ready = true; if (d.onReady) d.onReady(); }
+        else if (line.startsWith('err')) console.warn('SPIKE', line);
+      }
+    } else if (t === 0x3c) {
+      const n = m[1] | (m[2] << 8);
+      let p = m.subarray(3, 3 + n);
+      const ports = [];
+      while (p.length) {
+        const sz = SIZES[p[0]];
+        if (!sz || p.length < sz) break;
+        if (p[0] === 0x00) d.bat = p[1];
+        if (p[0] === 0x0a) ports.push(p[1]);
+        p = p.subarray(sz);
+      }
+      d.motorPorts = ports.filter(x => x < 6).sort((a, b) => a - b);
+      if (!d.gotNotif) { d.gotNotif = true; refreshRobotUI(); }
+    }
+  };
+  d.wait = (t, ms) => new Promise((res, rej) => {
+    const q = d.waits.get(t) || [];
+    const h = m => { clearTimeout(tm); res(m); };
+    const tm = setTimeout(() => { const qq = d.waits.get(t) || []; const i = qq.indexOf(h); if (i >= 0) qq.splice(i, 1); rej(new Error('SPIKE yanıt vermedi')); }, ms);
+    q.push(h); d.waits.set(t, q);
+  });
+  d.req = (link, frame, t, ms) => { const w = d.wait(t, ms || 4000); link.raw(frame); return w; };
+  d.ports = () => {
+    const e = d.motorPorts;
+    const pick = (k, def) => cfg[k] !== 'auto' ? cfg[k] : PORTS[def];
+    return { l: pick('portL', e[0] ?? 0), r: pick('portR', e[1] ?? 1), s: cfg.layout === 'car' ? pick('portS', e[2] ?? 2) : null };
+  };
+  d.init = async (link, tr) => {
+    const info = await d.req(link, SPK.info(), 0x01, 5000);
+    const dv = new DataView(info.buffer, info.byteOffset, info.byteLength);
+    const maxPacket = info.length >= 11 ? dv.getUint16(9, true) : 20, maxChunk = info.length >= 15 ? dv.getUint16(13, true) : 128;
+    link.chunk = Math.max(20, Math.min(maxPacket || 20, tr.maxWrite || 20));
+    try { await d.req(link, SPK.notify(500), 0x29, 3000); } catch (e) {}
+    const t0 = performance.now();
+    while (!d.gotNotif && performance.now() - t0 < 1500) await sleep(50);
+    if (!cfg.spikeOk) {
+      const ok = await askConfirm('SPIKE hub\'ına köprü programı yüklensin mi?',
+        `<p>SPIKE hub'ını doğrudan sürmek için hub'a küçük bir kumanda programı yüklemem gerekiyor. Program <b>${cfg.spikeSlot}. yuvaya</b> yazılacak, o yuvada başka bir program varsa yerine geçecek.</p><p>Yuvayı Ayarlar → Robot bölümünden değiştirebilirsin.</p>`, 'Yükle ve bağlan');
+      if (!ok) throw new Error('cancel');
+      cfg.spikeOk = true; saveCfg();
+    }
+    const ports = d.ports();
+    const src = te.encode(spikeProgram(ports));
+    const slot = cfg.spikeSlot | 0;
+    try { await d.req(link, SPK.clear(slot), 0x47, 3000); } catch (e) {}
+    const r1 = await d.req(link, SPK.upload('program.py', slot, SPK.crc32(SPK.pad4(src), 0)), 0x0d, 5000);
+    if (r1[1] !== 0) throw new Error('SPIKE programı kabul etmedi');
+    const cs = Math.max(16, Math.floor(Math.min(maxChunk || 128, 256) / 4) * 4);
+    let crc = 0;
+    for (let o = 0; o < src.length; o += cs) {
+      const c = src.subarray(o, o + cs), last = o + c.length >= src.length;
+      crc = SPK.crc32(last ? SPK.pad4(c) : c, crc);
+      const r = await d.req(link, SPK.chunk(c, crc), 0x11, 5000);
+      if (r[1] !== 0) throw new Error('SPIKE program parçasını reddetti');
+      setConnText('SPIKE programı yükleniyor %' + Math.round(100 * Math.min(1, (o + c.length) / src.length)));
+    }
+    const ready = new Promise(res => { d.onReady = res; if (d.ready) res(); });
+    const r2 = await d.req(link, SPK.start(slot), 0x1f, 5000);
+    if (r2[1] !== 0) throw new Error('SPIKE programı başlatamadı');
+    await Promise.race([ready, sleep(6000)]);
+    link.raw(SPK.notify(5000));
+    d.used = ports;
+  };
+  const line = s => SPK.tunnel(s + '\n');
+  d.drive = (link, L, R) => { [L, R] = sides(L, R); const s = `D ${Math.round(L)} ${Math.round(R)}`; link.put('drive', line(s), s, 400); return s; };
+  d.carDrive = (link, D, S) => {
+    const [a] = sides(Math.round(D), Math.round(D));
+    const ang = Math.round(S * cfg.steerRange / 2) * 2 * (cfg.invertS ? -1 : 1);
+    const s = `C ${a} ${ang}`;
+    link.put('drive', line(s), s, 400);
+    return s;
+  };
+  d.fx = (link, fx) => link.put('led', line('L ' + FX_IDX[fx]), fx);
+  d.screen = (link, g) => link.put('screen', line('G ' + g), g);
+  d.horn = link => link.put('horn', line('B 392 180'));
+  d.estop = link => { link.clear(); return link.raw(line('S')); };
+  d.battery = async () => d.bat;
+  return d;
+}
+
+function makeArd(classic) {
+  const d = { fam:'ard', label: classic ? 'Bluetooth araba (HC-05)' : 'Bluetooth araba (HM-10)', chunk:20, gap:0, hasScreen:false, car:false };
+  d.shape = () => 'power';
+  d.onData = () => {};
+  d.code = (L, R) => {
+    [L, R] = sides(L, R);
+    const v = (L + R) / 2, w = (L - R) / 2, av = Math.abs(v), aw = Math.abs(w);
+    let c = 'S';
+    if (av >= 6 || aw >= 6) {
+      if (aw < av * 0.35) c = v > 0 ? 'F' : 'B';
+      else if (av < aw * 0.35) c = w > 0 ? 'R' : 'L';
+      else c = v > 0 ? (w > 0 ? 'I' : 'G') : (w > 0 ? 'J' : 'H');
+    }
+    const m = Math.max(Math.abs(L), Math.abs(R));
+    return [c, m >= 95 ? 'q' : String(Math.min(9, Math.floor(m / 10)))];
+  };
+  d.init = async link => { link.raw(te.encode('S')); };
+  d.drive = (link, L, R) => { const [c, s] = d.code(L, R); const txt = c === 'S' ? 'S' : s + c; link.put('drive', te.encode(txt), txt, 250); return txt; };
+  d.fx = (link, fx) => { const t = (car.lights ? 'W' : 'w') + (fx === 'brake' || fx === 'reverse' ? 'U' : 'u'); link.put('led', te.encode(t), t); };
+  d.horn = link => { link.put('horn', te.encode('V')); setTimeout(() => { if (conn.link === link) link.put('horn', te.encode('v')); }, 300); };
+  d.estop = link => { link.clear(); return link.raw(te.encode('S')); };
+  return d;
+}
+
+/* ================= Bağlantı yönetimi ================= */
+const conn = { tr:null, link:null, drv:null, dev:null, fam:null, state:'off', userClosed:false, gen:0 };
+const carLayout = () => cfg.layout === 'car' && !!conn.drv && !!conn.drv.carDrive;
+
+function btSupport() {
+  if (!('bluetooth' in navigator)) return 'none';
+  try {
+    const fp = document.permissionsPolicy || document.featurePolicy;
+    if (fp && fp.allowsFeature && !fp.allowsFeature('bluetooth')) return 'blocked';
+  } catch (e) {}
+  return 'ok';
+}
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+async function connectDevice(dev, fam) {
+  Sound.init(); wakeLock();
+  if (conn.state !== 'off') await disconnect(true);
+  conn.userClosed = false; conn.dev = dev; conn.fam = fam || dev.fam || null;
+  const gen = ++conn.gen;
+  setConn('connecting');
+  try { await openSession(gen, true); }
+  catch (e) {
+    if (gen !== conn.gen) return;
+    if (conn.tr) conn.tr.close();
+    cleanup(); setConn('off');
+    if (e && e.message === 'cancel') toast('Bağlantı iptal edildi.');
+    else toast('Bağlanamadı: ' + ((e && e.message) || e), true);
+  }
+}
+
+async function openSession(gen, first) {
+  const dev = conn.dev;
+  let tr, fam = conn.fam;
+  if (NATIVE) {
+    if (!fam || !UU[fam]) throw new Error('Robot türü seçilmedi');
+    tr = new NativeTr(dev);
+    conn.tr = tr;
+    await tr.open(UU[fam]);
+  } else {
+    tr = new WebTr(dev.webDevice);
+    conn.tr = tr;
+    fam = await tr.open(fam && UU[fam] ? UU[fam] : null);
+  }
+  if (gen !== conn.gen) { tr.close(); tr.dispose(); return; }
+  conn.fam = fam;
+  tr.onClose = () => onLinkLost(gen);
+  const link = new Link(tr);
+  conn.link = link;
+  let drv;
+  if (fam === 'mk') drv = await detectMakeblock(link, tr);
+  else if (fam === 'lego') drv = makeLego(dev.legoKind);
+  else if (fam === 'spike') drv = makeSpike();
+  else drv = makeArd(dev.kind === 'classic');
+  if (gen !== conn.gen) return;
+  conn.drv = drv;
+  tr.onData = b => drv.onData(b);
+  link.chunk = Math.min(drv.chunk, tr.maxWrite || 20);
+  link.gap = drv.gap;
+  setConnText(drv.label + ' hazırlanıyor…');
+  await drv.init(link, tr);
+  if (gen !== conn.gen) return;
+  link.ready = true;
+  link.pump();
+  conn.state = 'on';
+  cfg.lastFam = drv.fam; saveCfg();
+  robotFX.holdUntil = performance.now() + 1200;
+  setConn('on');
+  refreshRobotUI();
+  pollBattery();
+  if (first) toast(drv.label + ' bağlandı! ' + (cfg.trans === 'manual' ? 'Gaz için önce + ile 1. vitese tak.' : 'D vitesindesin, gaza bas.'));
+}
+
+async function onLinkLost(gen) {
+  if (gen !== conn.gen) return;
+  const wasOn = conn.state === 'on';
+  conn.gen++;
+  cleanup(); setConn('off');
+  if (conn.userClosed) return;
+  if (!wasOn) { toast('Bağlantı koptu.', true); return; }
+  toast('Bağlantı koptu! Robot son komutla gidiyorsa elle durdur. Yeniden bağlanıyor…', true);
+  for (let i = 0; i < 3 && !conn.userClosed; i++) {
+    await sleep(700 + i * 800);
+    if (conn.userClosed || conn.state !== 'off') return;
+    const g = ++conn.gen;
+    setConn('connecting');
+    try { await openSession(g, false); if (g === conn.gen && conn.state === 'on') { toast('Yeniden bağlandı.'); return; } }
+    catch (e) { if (g === conn.gen) { if (conn.tr) conn.tr.close(); cleanup(); setConn('off'); } }
+  }
+  if (!conn.userClosed) toast('Yeniden bağlanamadı. Bağlan\'a basıp tekrar dene.', true);
+}
+
+function cleanup() {
+  if (conn.link) { conn.link.ready = false; conn.link.clear(); }
+  if (conn.tr) { try { conn.tr.dispose(); } catch (e) {} }
+  conn.tr = null; conn.link = null; conn.drv = null; conn.state = 'off';
+  refreshRobotUI();
+}
+
+async function disconnect(silent) {
+  conn.userClosed = true; conn.gen++;
+  const { link, drv, tr } = conn;
+  if (link && link.ready && drv) { try { await Promise.race([drv.estop(link), sleep(500)]); } catch (e) {} }
+  if (tr) tr.close();
+  cleanup(); setConn('off');
+  if (!silent) toast('Bağlantı kapatıldı.');
+}
+
+function setConn(state) {
+  const pill = $('connPill');
+  pill.dataset.state = state;
+  if (state !== 'connecting') conn.state = state === 'on' ? 'on' : 'off';
+  else conn.state = 'connecting';
+  const name = conn.dev ? conn.dev.name || 'robot' : 'robot';
+  setConnText(state === 'on' ? 'Bağlı · ' + (conn.drv ? conn.drv.label : name) : state === 'connecting' ? name + ' · bağlanıyor…' : 'Robot yok · deneme modu');
+  $('connLabel').textContent = state === 'on' ? 'Bağlantıyı kes' : state === 'connecting' ? 'Vazgeç' : 'Bağlan';
+  $('btnConnect').classList.toggle('on', state === 'on');
+  if (state !== 'on') $('batVal').textContent = '—';
+}
+function setConnText(t) { $('connText').textContent = t; }
+
+async function pollBattery() {
+  const { link, drv } = conn;
+  if (!link || !link.ready || !drv || !drv.battery) return;
+  const v = await drv.battery(link);
+  if (v !== undefined && conn.drv === drv) $('batVal').textContent = '%' + Math.round(v);
+}
+setInterval(pollBattery, 15000);
+
+/* ================= Cihaz listesi ================= */
+const devs = new Map();
+let devSeq = 0, scanning = false, renderQueued = false;
+const liById = new Map();
+
+function classify(d) {
+  const svc = (d.svc || []).map(s => String(s).toLowerCase());
+  const has = u => svc.includes(u);
+  const name = d.name || '';
+  const lego = d.mfr ? (d.mfr['919'] || d.mfr[919]) : null;
+  if (d.kind === 'classic') {
+    const like = /HC-?0\d|HC0\d|linvor|JDY|ZS-?04|SPP|BT-?0\d|robot|car|araba/i.test(name);
+    return { fam:'ard', type: like ? 'HC-05 / HC-06 araba' : 'Klasik Bluetooth cihazı', ok: like, badge:'HC' };
+  }
+  if (has(UU.spike.svc)) return { fam:'spike', type:'LEGO SPIKE Prime / Essential', ok:true, badge:'SPK' };
+  if (has(UU.lego.svc) || lego) {
+    const k = lego && lego.length >= 4 ? parseInt(lego.slice(2, 4), 16) : undefined;
+    return { fam:'lego', type: LEGO_KIND[k] || 'LEGO hub', ok: k !== 0x42, badge:'LEGO', legoKind: k };
+  }
+  if (/^(Makeblock|CyberPi|mBot)/i.test(name) || has(UU.mk.svc)) return { fam:'mk', type:'Makeblock mBot2 / mBot', ok:true, badge:'mB' };
+  if (has(UU.ard.svc) || /HMSoft|BT05|MLT-BT05|JDY|HM-?10|DSD/i.test(name)) return { fam:'ard', type:'BLE seri modül (HM-10)', ok:true, badge:'HM' };
+  return { fam:null, type:'Tanınmayan cihaz', ok:false, badge:'BT' };
+}
+
+function devAdd(d) {
+  if (!d || !d.id) return;
+  const prev = devs.get(d.id);
+  const x = Object.assign(prev || { order: devSeq++ }, d, classify(d));
+  if (prev && !d.name && prev.name) x.name = prev.name;
+  if (prev && prev.userFam) x.fam = prev.userFam;
+  devs.set(d.id, x);
+  if (!renderQueued) { renderQueued = true; requestAnimationFrame(renderDevs); }
+}
+
+function sigLevel(r) { if (!r) return 0; return r >= -60 ? 4 : r >= -70 ? 3 : r >= -82 ? 2 : 1; }
+
+function renderDevs(full) {
+  renderQueued = false;
+  const list = $('devList');
+  if (full === true) { list.textContent = ''; liById.clear(); }
+  const arr = [...devs.values()].filter(x => cfg.showAll || x.ok).sort((a, b) => (b.ok - a.ok) || (a.order - b.order));
+  const keep = new Set(arr.map(x => x.id));
+  for (const [id, li] of liById) if (!keep.has(id)) { li.remove(); liById.delete(id); }
+  let next = null;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const x = arr[i];
+    let li = liById.get(x.id);
+    if (!li) { li = devItem(x); liById.set(x.id, li); list.insertBefore(li, next); }
+    devUpdate(li, x);
+    next = li;
+  }
+  $('devEmpty').hidden = arr.length > 0 || scanning;
+}
+
+function devItem(x) {
+  const li = document.createElement('li');
+  li.className = 'dev';
+  li.innerHTML = '<span class="dev-ico"></span><span class="dev-main"><b></b><small></small></span><span class="sig"><i></i><i></i><i></i><i></i></span><button class="btn primary dev-go">Bağlan</button><div class="dev-pick" hidden><p>Bu cihaz hangisi?</p><div class="seg"><button data-f="mk">mBot</button><button data-f="lego">LEGO</button><button data-f="spike">SPIKE</button><button data-f="ard">Arduino</button></div></div>';
+  li.querySelector('.dev-go').addEventListener('click', () => {
+    const d = devs.get(x.id);
+    if (!d) return;
+    if (!d.fam) { li.querySelector('.dev-pick').hidden = !li.querySelector('.dev-pick').hidden; return; }
+    chooseDevice(d, d.fam);
+  });
+  li.querySelector('.dev-pick').addEventListener('click', e => {
+    const b = e.target.closest('button[data-f]'); if (!b) return;
+    const d = devs.get(x.id); if (!d) return;
+    d.userFam = b.dataset.f; d.fam = b.dataset.f;
+    chooseDevice(d, d.fam);
+  });
+  return li;
+}
+
+function devUpdate(li, x) {
+  li.classList.toggle('maybe', !x.ok);
+  li.querySelector('.dev-ico').textContent = x.badge;
+  li.querySelector('.dev-main b').textContent = x.name || 'İsimsiz cihaz';
+  const rs = x.rssi ? x.rssi + ' dBm' : (x.bonded ? 'eşleşmiş' : '');
+  li.querySelector('.dev-main small').textContent = x.type + (rs ? ' · ' + rs : '');
+  li.querySelector('.sig').dataset.l = String(sigLevel(x.rssi));
+  const go = li.querySelector('.dev-go');
+  const isCur = conn.dev && conn.dev.id === x.id && conn.state !== 'off';
+  go.textContent = isCur ? (conn.state === 'on' ? 'Bağlı' : 'Bağlanıyor') : (x.fam ? 'Bağlan' : 'Seç');
+  go.disabled = isCur;
+}
+
+function chooseDevice(d, fam) {
+  closeSheets();
+  if (NATIVE) { try { NativeBT.scan(false, false); } catch (e) {} }
+  connectDevice({ id:d.id, name:d.name || 'Bluetooth cihazı', kind:d.kind, legoKind:d.legoKind, fam }, fam);
+}
+
+function setScanning(on) {
+  scanning = !!on;
+  $('scanSpin').hidden = !scanning;
+  $('scanText').textContent = scanning ? 'Yakındaki cihazlar taranıyor…' : (devs.size ? 'Tarama bitti.' : 'Tarama bitti, cihaz bulunamadı.');
+  renderDevs();
+}
+
+function startScan() {
+  $('devNeed').hidden = true;
+  setScanning(true);
+  try { NativeBT.scan(true, true); } catch (e) { setScanning(false); toast('Tarama başlatılamadı.', true); }
+}
+
+let needAction = null;
+function showNeed(what) {
+  const M = {
+    perm: ['Yakındaki cihazları bulmak için Bluetooth izni gerekiyor.', 'İzin ver', () => startScan()],
+    permblocked: ['Bluetooth izni daha önce reddedildi. Uygulama ayarlarında "Yakındaki cihazlar" iznini aç.', 'Ayarları aç', () => NativeBT.openSettings('app')],
+    bt: ['Bluetooth kapalı.', 'Bluetooth\'u aç', () => startScan()],
+    location: ['Bu Android sürümünde cihazları bulmak için Konum açık olmalı.', 'Konumu aç', () => NativeBT.openSettings('location')],
+    nobt: ['Bu telefonda Bluetooth bulunamadı.', 'Tamam', () => { $('devNeed').hidden = true; }],
+  };
+  const m = M[what]; if (!m) return;
+  setScanning(false);
+  $('needText').textContent = m[0];
+  $('needBtn').textContent = m[1];
+  needAction = m[2];
+  $('devNeed').hidden = false;
+}
+$('needBtn').addEventListener('click', () => { if (needAction) needAction(); });
+
+function openDevSheet() {
+  releaseAll();
+  $('devSheet').hidden = false; $('backdrop').hidden = false;
+  $('devNative').hidden = !NATIVE; $('devWeb').hidden = NATIVE;
+  $('cShowAll').checked = !!cfg.showAll;
+  if (NATIVE) { devs.clear(); renderDevs(true); startScan(); }
+}
+
+async function webPick() {
+  Sound.init();
+  if (btSupport() === 'none') { showHelp('none'); return; }
+  let device;
+  try {
+    const filters = [{ namePrefix:'Makeblock' }, { namePrefix:'CyberPi' }, { namePrefix:'mBot' }, { services:[UU.lego.svc] }, { services:[UU.spike.svc] },
+      { services:[UU.ard.svc] }, { namePrefix:'HMSoft' }, { namePrefix:'BT05' }, { namePrefix:'MLT' }, { namePrefix:'JDY' }];
+    device = await navigator.bluetooth.requestDevice(cfg.showAll ? { acceptAllDevices:true, optionalServices:ALL_SVCS } : { filters, optionalServices:ALL_SVCS });
+  } catch (e) {
+    if (e.name === 'NotFoundError') toast('Cihaz seçilmedi. Robot açık mı, başka bir yere bağlı değil mi?');
+    else if (e.name === 'SecurityError' || e.name === 'NotAllowedError') showHelp('blocked');
+    else toast('Bluetooth hatası: ' + e.message, true);
+    return;
+  }
+  closeSheets();
+  connectDevice({ webDevice:device, id:device.id, name:device.name || 'Bluetooth cihazı' }, null);
+}
+$('devPick').addEventListener('click', webPick);
+$('devRescan').addEventListener('click', () => { devs.clear(); renderDevs(true); startScan(); });
+$('devClose').addEventListener('click', closeSheets);
+
+/* ================= Sürüş fiziği ================= */
+const IDLE = 900, LIMIT = 7800;
+const GEARS = {
+  '-1': { max:0.40, acc:0.95 },
+  1: { max:0.26, acc:1.35 },
+  2: { max:0.44, acc:1.05 },
+  3: { max:0.62, acc:0.82 },
+  4: { max:0.81, acc:0.62 },
+  5: { max:1.00, acc:0.46 },
+};
+const car = { v:0, rpm:IDLE, gear:0, dir:1, revTimer:0, shiftCut:0, limiter:false, drifting:false, driftDir:1, driftHold:0, driftAmt:0,
+  driftScore:0, driftShowUntil:0, nitroTank:1, nitroOn:false, lights:false, braking:false };
+const inp = { steer:0, gas:0, brake:0, hb:false, nitro:false };
+const out = { l:0, r:0, L:0, R:0, D:0, S:0 };
+let appHidden = false;
+
+function setTransmission(mode) {
+  if (mode === 'auto') { car.dir = car.v < -0.03 ? -1 : 1; car.gear = car.dir < 0 ? -1 : 1; }
+  else { car.gear = Math.abs(car.v) < 0.03 ? 0 : (car.v < 0 ? -1 : Math.max(1, autoGearFor(car.v))); }
+  updateGearUI(true);
+}
+function autoGearFor(v) { for (let g = 1; g <= 5; g++) if (v <= GEARS[g].max * 0.92) return g; return 5; }
+
+function shiftUp() {
+  Sound.init();
+  if (cfg.trans === 'auto') {
+    if (car.dir < 0) { if (Math.abs(car.v) < 0.06) { car.dir = 1; car.gear = 1; afterShift(); } else toast('Önce dur, sonra ileri vitese geç.'); }
+    return;
+  }
+  if (car.gear === -1) car.gear = 0;
+  else if (car.gear === 0) { if (car.v < -0.06) { grind(); return; } car.gear = 1; }
+  else if (car.gear < 5) car.gear++;
+  else return;
+  afterShift();
+}
+function shiftDown() {
+  Sound.init();
+  if (cfg.trans === 'auto') {
+    if (car.dir > 0) { if (Math.abs(car.v) < 0.06) { car.dir = -1; car.gear = -1; afterShift(); } else toast('Geri vites için önce tamamen dur.'); }
+    return;
+  }
+  if (car.gear > 1) car.gear--;
+  else if (car.gear === 1) car.gear = 0;
+  else if (car.gear === 0) { if (car.v > 0.06) { grind(); return; } car.gear = -1; }
+  else return;
+  afterShift();
+}
+function afterShift() { car.shiftCut = 0.12; buzz(12); updateGearUI(); }
+function grind() { Sound.grind(); buzz([30, 30, 30]); toast('Hareket halindeyken ters yöne vites takılmaz.'); }
+
+function physics(dt) {
+  const auto = cfg.trans === 'auto';
+  let gas = inp.gas, brk = inp.brake;
+  const stopped = Math.abs(car.v) < 0.03;
+
+  if (auto) {
+    if (car.dir > 0) {
+      if (stopped && brk > 0.2 && gas < 0.05) { car.revTimer += dt; if (car.revTimer > 0.35) { car.dir = -1; car.gear = -1; car.revTimer = 0; afterShift(); } }
+      else car.revTimer = 0;
+    } else {
+      if (stopped && gas > 0.2 && brk < 0.05) { car.dir = 1; car.gear = 1; afterShift(); }
+    }
+    if (car.dir < 0) { const t = gas; gas = brk; brk = t; car.gear = -1; }
+  }
+
+  const g = car.gear, G = GEARS[g];
+  const dirSign = g < 0 ? -1 : 1;
+  car.nitroOn = inp.nitro && car.nitroTank > 0.02 && !!G && gas > 0.05;
+  car.nitroTank = car.nitroOn ? Math.max(0, car.nitroTank - dt * 0.32) : Math.min(1, car.nitroTank + dt * 0.09);
+  const capMul = car.nitroOn ? 1.12 : 1;
+  if (car.shiftCut > 0) car.shiftCut -= dt;
+
+  let along = car.v * dirSign;
+  let accel = 0, decel = 0;
+  car.limiter = false;
+  const accMul = 0.45 + cfg.accel / 100 * 1.1;
+
+  if (G && gas > 0.02 && car.shiftCut <= 0) {
+    const max = G.max * capMul;
+    if (along < max) {
+      let a = G.acc * accMul * gas;
+      const lowBand = g > 1 ? GEARS[g - 1].max * 0.5 : 0;
+      if (lowBand > 0 && along < lowBand) a *= 0.3 + 0.7 * Math.max(0, along) / lowBand;
+      const f = Math.max(0, along) / max;
+      a *= 1 - 0.4 * f * f;
+      if (car.nitroOn) a *= 1.8;
+      accel = a;
+    } else car.limiter = true;
+  }
+  if (inp.hb && !car.drifting) accel = 0;
+  if (inp.hb && car.drifting) accel *= 0.6;
+
+  decel += 0.16 + 0.10 * Math.abs(car.v);
+  if (G && gas < 0.02) decel += 0.20;
+  if (G && along > G.max * capMul + 0.01) decel += 1.3;
+  decel += 2.6 * brk;
+  if (inp.hb) decel += car.drifting ? (gas > 0.2 ? 0.25 : 0.9) : 1.9;
+
+  along += accel * dt;
+  let v = along * dirSign;
+  const sp = Math.max(0, Math.abs(v) - decel * dt);
+  v = (v < 0 ? -1 : 1) * sp;
+  car.v = clamp(v, -1.15, 1.15);
+  car.braking = (brk > 0.08 && Math.abs(car.v) > 0.01) || inp.hb;
+
+  const speed = Math.abs(car.v), st = inp.steer;
+  if (!car.drifting && inp.hb && speed > 0.16 && Math.abs(st) > 0.22) {
+    car.drifting = true; car.driftDir = Math.sign(st); car.driftScore = 0; car.driftHold = 0.3; buzz(35);
+  }
+  if (car.drifting) {
+    car.driftHold = inp.hb ? 0.3 : car.driftHold - dt;
+    car.driftScore += speed * dt * 900 * (0.5 + car.driftAmt);
+    if (car.driftHold <= 0 || speed < 0.05) { car.drifting = false; car.driftShowUntil = performance.now() + 1400; }
+  }
+  car.driftAmt = approach(car.driftAmt, car.drifting ? 1 : 0, dt * (car.drifting ? 7 : 4));
+
+  if (auto && car.dir > 0 && car.shiftCut <= 0) {
+    const cg = car.gear;
+    if (cg < 5 && car.v > GEARS[cg].max * 0.93 && gas > 0.05) { car.gear++; afterShift(); }
+    else if (cg > 1 && (car.v < GEARS[cg - 1].max * 0.55 || (gas > 0.85 && car.v < GEARS[cg - 1].max * 0.8))) { car.gear--; afterShift(); }
+  }
+
+  let target;
+  if (!G) target = IDLE + inp.gas * (LIMIT - IDLE);
+  else {
+    const f = Math.max(0, car.v * dirSign) / G.max;
+    target = IDLE + f * (LIMIT - IDLE);
+    if (g === 1 || g === -1) target = Math.max(target, IDLE + gas * 2400);
+    if (car.drifting && gas > 0.2) target = Math.max(target, 5200 + gas * 1800);
+  }
+  if (car.limiter && gas > 0.02) target = LIMIT - Math.random() * 650;
+  target = clamp(target, IDLE * 0.9, LIMIT);
+  car.rpm += (target - car.rpm) * Math.min(1, dt * 10);
+}
+
+const steerCurve = x => Math.sign(x) * (0.4 * Math.abs(x) + 0.6 * x * x);
+
+function mix() {
+  const v = car.v, av = Math.abs(v), sv = v < 0 ? -1 : 1;
+  const sens = 0.45 + cfg.steerSens / 100 * 0.85;
+  const s = steerCurve(inp.steer) * sens;
+  let y = sv * s * (0.95 - 0.35 * Math.min(1, av)) * av;
+  if (cfg.tank && av < 0.1) y = lerp(s * 0.55, y, av / 0.1);
+  if (car.driftAmt > 0.001) {
+    const D = (1.05 + cfg.drift / 100 * 0.95) * Math.max(av, 0.32);
+    const ctrl = clamp(0.55 + 0.45 * inp.steer * car.driftDir, 0.08, 1);
+    y = lerp(y, sv * car.driftDir * D * ctrl, car.driftAmt);
+  }
+  let l = v + y, r = v - y;
+  const m = Math.max(1, Math.abs(l), Math.abs(r));
+  out.l = l / m; out.r = r / m;
+  const lim = cfg.limit / 100 * (car.nitroOn ? 1.15 : 1);
+  const mode = conn.drv ? conn.drv.shape() : cfg.motor;
+  out.L = shape(clamp(out.l * lim, -1, 1) * 100, mode);
+  out.R = shape(clamp(out.r * lim, -1, 1) * 100, mode);
+  out.D = shape(clamp(v * lim, -1, 1) * 100, mode);
+  out.S = clamp(steerCurve(inp.steer) * (0.6 + cfg.steerSens / 100 * 0.6), -1, 1);
+}
+function shape(x, mode) {
+  const a = Math.abs(x);
+  if (a < 3) return 0;
+  let y = mode === 'power' ? 12 + a * 0.88 : a;
+  y = Math.min(100, Math.round(y / 2) * 2);
+  return Math.sign(x) * y;
+}
+
+// sürüş komutlarını ~15 kez/sn gönder; değişmeyen komut aralıklarla tekrarlanır
+const test = { until:0, side:'L' };
+setInterval(() => {
+  const { link, drv } = conn;
+  if (!link || !link.ready || !drv) return;
+  const off = document.hidden || appHidden;
+  let cmd;
+  if (performance.now() < test.until) cmd = drv.drive(link, test.side === 'L' ? 40 : 0, test.side === 'R' ? 40 : 0);
+  else if (carLayout()) cmd = drv.carDrive(link, off ? 0 : out.D, off ? 0 : out.S);
+  else cmd = drv.drive(link, off ? 0 : out.L, off ? 0 : out.R);
+  if (cmd && cmd !== ui.lastCmd) { ui.lastCmd = cmd; $('lastCmd').textContent = cmd; }
+}, 66);
+
+/* robot ışıkları ve ekranı */
+const robotFX = { holdUntil:0 };
+setInterval(() => {
+  const { link, drv } = conn;
+  if (!link || !link.ready || !drv || performance.now() < robotFX.holdUntil) return;
+  let fx = car.lights ? 'lights' : 'off';
+  if (cfg.brakeLights && car.gear === -1 && car.v < -0.02) fx = 'reverse';
+  if (cfg.brakeLights && car.braking) fx = 'brake';
+  if (car.nitroOn) fx = 'nitro';
+  if (car.drifting) fx = 'drift';
+  if (drv.fx) drv.fx(link, fx);
+  if (cfg.screenGear && drv.hasScreen && drv.screen) drv.screen(link, gearLabel());
+}, 120);
+
+/* ================= Girdiler ================= */
+const WHEEL_LOCK = 120;
+const wheel = { id:null, angle:0, prev:0, held:false };
+const joy = { id:null, x:0, y:0 };
+const tilt = { raw:0, base:null, deg:0, s:0, has:false, flat:false, listening:false };
+const ped = { gas:0, brake:0, gasId:null, brakeId:null };
+const touch = { hb:false, nitro:false };
+const keys = new Set();
+const kb = { steer:0 };
+const pad = { steer:0, gas:0, brake:0, hb:false, nitro:false, connected:false, prev:[] };
+
+function bindHold(el, onDown, onUp) {
+  el.addEventListener('pointerdown', e => { e.preventDefault(); try { el.setPointerCapture(e.pointerId); } catch (x) {} Sound.init(); onDown(e); });
+  const up = e => onUp(e);
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('lostpointercapture', up);
+}
+
+const wheelEl = $('wheel');
+function fingerAngle(e) {
+  const r = wheelEl.getBoundingClientRect();
+  const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  return { a: Math.atan2(dy, dx) * 180 / Math.PI, d: Math.hypot(dx, dy) / (r.width / 2) };
+}
+bindHold(wheelEl, e => { wheel.id = e.pointerId; wheel.held = true; wheel.prev = fingerAngle(e).a; }, e => { if (e.pointerId === wheel.id) { wheel.held = false; wheel.id = null; } });
+wheelEl.addEventListener('pointermove', e => {
+  if (e.pointerId !== wheel.id) return;
+  const f = fingerAngle(e);
+  let d = f.a - wheel.prev;
+  if (d > 180) d -= 360; if (d < -180) d += 360;
+  wheel.prev = f.a;
+  if (f.d < 0.14) return;
+  wheel.angle = clamp(wheel.angle + d, -WHEEL_LOCK, WHEEL_LOCK);
+});
+
+const joyEl = $('joy'), knob = $('knob');
+function joyMove(e) {
+  const r = joyEl.getBoundingClientRect(), R = r.width / 2 * 0.68;
+  let x = (e.clientX - (r.left + r.width / 2)) / R, y = (e.clientY - (r.top + r.height / 2)) / R;
+  const m = Math.hypot(x, y); if (m > 1) { x /= m; y /= m; }
+  joy.x = x; joy.y = -y;
+}
+bindHold(joyEl, e => { joy.id = e.pointerId; joyMove(e); }, e => { if (e.pointerId === joy.id) { joy.id = null; joy.x = 0; joy.y = 0; } });
+joyEl.addEventListener('pointermove', e => { if (e.pointerId === joy.id) joyMove(e); });
+
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity;
+  if (!a || a.x == null || a.y == null) return;
+  tilt.has = true;
+  tilt.flat = Math.hypot(a.x, a.y) < 3;
+  const ang = Math.atan2(a.y, a.x) * 180 / Math.PI;
+  tilt.raw = ang;
+  if (tilt.base === null) tilt.base = ang;
+  let d = ((ang - tilt.base + 540) % 360) - 180;
+  if (cfg.tiltInvert) d = -d;
+  tilt.deg = d;
+}
+async function startTilt() {
+  tilt.base = null;
+  try {
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      const p = await DeviceMotionEvent.requestPermission();
+      if (p !== 'granted') { toast('Eğim için hareket sensörüne izin ver.', true); return; }
+    }
+  } catch (e) {}
+  if (!tilt.listening) { window.addEventListener('devicemotion', onMotion); tilt.listening = true; }
+  setTimeout(() => { if (cfg.steerMode === 'tilt' && !tilt.has) toast('Eğim sensörü okunamadı. Bu cihazda Simit ya da Joystick kullan.', true); }, 1800);
+}
+$('tiltCal').addEventListener('click', () => { tilt.base = tilt.raw; buzz(10); toast('Direksiyon ortalandı.'); });
+
+function pedalVal(el, e) { const r = el.getBoundingClientRect(); return 0.35 + 0.65 * clamp((r.bottom - e.clientY) / r.height, 0, 1); }
+for (const [id, key] of [['pedGas', 'gas'], ['pedBrake', 'brake']]) {
+  const el = $(id);
+  bindHold(el, e => { ped[key + 'Id'] = e.pointerId; ped[key] = pedalVal(el, e); }, e => { if (e.pointerId === ped[key + 'Id']) { ped[key + 'Id'] = null; ped[key] = 0; } });
+  el.addEventListener('pointermove', e => { if (e.pointerId === ped[key + 'Id']) ped[key] = pedalVal(el, e); });
+}
+bindHold($('hbrake'), () => { touch.hb = true; }, () => { touch.hb = false; });
+bindHold($('nitro'), () => { touch.nitro = true; }, () => { touch.nitro = false; });
+
+const KEYMAP = { KeyW:'gas', ArrowUp:'gas', KeyS:'brake', ArrowDown:'brake', KeyA:'left', ArrowLeft:'left', KeyD:'right', ArrowRight:'right',
+  Space:'hb', ShiftLeft:'nitro', ShiftRight:'nitro' };
+const sheetOpen = () => !$('settings').hidden || !$('btHelp').hidden || !$('devSheet').hidden;
+window.addEventListener('keydown', e => {
+  if (sheetOpen()) { if (e.code === 'Escape') { if (!$('btHelp').hidden) closeHelp(false); else closeSheets(); } return; }
+  const k = KEYMAP[e.code];
+  if (k) { keys.add(k); e.preventDefault(); Sound.init(); return; }
+  if (e.repeat) return;
+  const act = { KeyE: shiftUp, KeyQ: shiftDown, KeyH: horn, KeyL: toggleLights, KeyM: toggleTrans, KeyX: emergencyStop, KeyC: () => { tilt.base = tilt.raw; } }[e.code];
+  if (act) { e.preventDefault(); act(); }
+});
+window.addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys.delete(k); });
+window.addEventListener('blur', () => keys.clear());
+
+function pollPad() {
+  pad.steer = 0; pad.gas = 0; pad.brake = 0; pad.hb = false; pad.nitro = false;
+  let gps = [];
+  try { gps = navigator.getGamepads ? navigator.getGamepads() : []; } catch (e) {}
+  let gp = null;
+  for (const g of gps) if (g && g.connected) { gp = g; break; }
+  if (!gp) { if (pad.connected) { pad.connected = false; $('padPill').hidden = true; } return; }
+  if (!pad.connected) { pad.connected = true; $('padPill').hidden = false; toast('Oyun kolu bağlandı.'); }
+  const ax = gp.axes[0] || 0;
+  pad.steer = Math.abs(ax) < 0.1 ? 0 : Math.sign(ax) * (Math.abs(ax) - 0.1) / 0.9;
+  const b = i => gp.buttons[i] || { value:0, pressed:false };
+  pad.gas = Math.max(b(7).value, b(7).pressed ? 1 : 0);
+  pad.brake = Math.max(b(6).value, b(6).pressed ? 1 : 0);
+  pad.hb = b(0).pressed;
+  pad.nitro = b(2).pressed || b(1).pressed;
+  const edges = { 5: shiftUp, 4: shiftDown, 3: horn, 8: toggleTrans, 9: toggleLights };
+  for (const i in edges) { const p = b(+i).pressed; if (p && !pad.prev[i]) edges[i](); pad.prev[i] = p; }
+}
+
+function gatherInputs(dt) {
+  const kt = (keys.has('right') ? 1 : 0) - (keys.has('left') ? 1 : 0);
+  kb.steer = approach(kb.steer, kt, dt * (kt ? 5 : 9));
+  pollPad();
+  if (!wheel.held) wheel.angle *= Math.exp(-dt * 12);
+  if (Math.abs(wheel.angle) < 0.2 && !wheel.held) wheel.angle = 0;
+  if (cfg.steerMode === 'tilt' && tilt.has) {
+    const d = tilt.flat ? 0 : tilt.deg, a = Math.abs(d);
+    const target = a < 2.5 ? 0 : Math.sign(d) * clamp((a - 2.5) / 29.5, 0, 1);
+    tilt.s += (target - tilt.s) * Math.min(1, dt * 15);
+  } else tilt.s = 0;
+
+  let steer = kb.steer + pad.steer;
+  if (cfg.steerMode === 'wheel') steer += wheel.angle / WHEEL_LOCK;
+  else if (cfg.steerMode === 'joy') steer += joy.x;
+  else steer += tilt.s;
+  inp.steer = clamp(steer, -1, 1);
+  const jg = cfg.steerMode === 'joy' && joy.y > 0.1 ? (joy.y - 0.1) / 0.9 : 0;
+  const jb = cfg.steerMode === 'joy' && joy.y < -0.1 ? (-joy.y - 0.1) / 0.9 : 0;
+  inp.gas = Math.max(ped.gas, keys.has('gas') ? 1 : 0, pad.gas, jg);
+  inp.brake = Math.max(ped.brake, keys.has('brake') ? 1 : 0, pad.brake, jb);
+  inp.hb = touch.hb || keys.has('hb') || pad.hb;
+  inp.nitro = touch.nitro || keys.has('nitro') || pad.nitro;
+}
+
+function releaseAll() {
+  keys.clear(); ped.gas = ped.brake = 0; ped.gasId = ped.brakeId = null;
+  wheel.held = false; wheel.id = null; joy.id = null; joy.x = joy.y = 0; touch.hb = touch.nitro = false;
+}
+
+/* ================= Aksiyonlar ================= */
+function horn() {
+  Sound.init(); Sound.horn();
+  const { link, drv } = conn;
+  if (link && link.ready && drv && drv.horn) drv.horn(link);
+}
+function toggleLights() { car.lights = !car.lights; $('btnLights').classList.toggle('on', car.lights); $('lightsLbl').textContent = car.lights ? 'AÇIK' : 'KAPALI'; buzz(8); }
+function toggleTrans() { cfg.trans = cfg.trans === 'auto' ? 'manual' : 'auto'; saveCfg(); setTransmission(cfg.trans); syncSettingsUI(); toast(cfg.trans === 'auto' ? 'Otomatik şanzıman' : 'Manuel şanzıman'); }
+function emergencyStop() {
+  releaseAll(); car.v = 0; car.drifting = false; car.driftAmt = 0;
+  const { link, drv } = conn;
+  if (link && link.ready && drv) drv.estop(link);
+  buzz([40, 40, 40]); toast('Acil durdurma', true);
+}
+function motorTest(side) {
+  if (!conn.link || !conn.link.ready) { toast('Test için önce robota bağlan.'); return; }
+  test.side = side; test.until = performance.now() + 700;
+  toast(side === 'L' ? 'Sol teker ileri dönmeli' : 'Sağ teker ileri dönmeli');
+}
+
+function tap(el, fn) {
+  el.addEventListener('pointerdown', e => { e.preventDefault(); el._pd = true; fn(); });
+  el.addEventListener('click', () => { if (el._pd) { el._pd = false; return; } fn(); });
+}
+$('btnConnect').addEventListener('click', () => {
+  Sound.init(); wakeLock();
+  if (conn.state === 'on' || conn.state === 'connecting') { disconnect(); return; }
+  openDevSheet();
+});
+tap($('btnStop'), emergencyStop);
+tap($('gearUp'), shiftUp);
+tap($('gearDown'), shiftDown);
+tap($('btnAM'), toggleTrans);
+tap($('btnLights'), toggleLights);
+tap($('btnHorn'), horn);
+$('testL').addEventListener('click', () => motorTest('L'));
+$('testR').addEventListener('click', () => motorTest('R'));
+$('btnFull').hidden = NATIVE;
+$('btnFull').addEventListener('click', async () => {
+  try {
+    if (!document.fullscreenElement) { await document.documentElement.requestFullscreen({ navigationUI:'hide' }); try { await screen.orientation.lock('landscape'); } catch (e) {} }
+    else await document.exitFullscreen();
+  } catch (e) { toast('Bu tarayıcı tam ekranı açmadı.'); }
+  setTimeout(resizeGauge, 300);
+});
+
+/* ================= Ayarlar paneli ================= */
+function openSettings() { syncSettingsUI(); $('settings').hidden = false; $('backdrop').hidden = false; releaseAll(); }
+function closeSheets() {
+  const wasDev = !$('devSheet').hidden;
+  $('settings').hidden = true; $('devSheet').hidden = true; $('backdrop').hidden = true;
+  if (wasDev && NATIVE) { try { NativeBT.scan(false, false); } catch (e) {} }
+}
+$('btnSettings').addEventListener('click', openSettings);
+$('setClose').addEventListener('click', closeSheets);
+$('backdrop').addEventListener('click', () => { if (!$('btHelp').hidden) closeHelp(false); else closeSheets(); });
+
+for (const id of ['pL', 'pR', 'pS']) $(id).innerHTML = '<option value="auto">Otomatik</option>' + [...PORTS].map(p => `<option value="${p}">${p}</option>`).join('');
+$('spSlot').innerHTML = Array.from({ length:20 }, (_, i) => `<option value="${i}">${i}. yuva</option>`).join('');
+
+const RANGE_OUT = { limit:['oLimit', v => '%' + v], accel:['oAccel', v => v], steerSens:['oSteer', v => v], drift:['oDrift', v => v], steerRange:['oSRange', v => '±' + Math.round(v / 2) + '°'] };
+function syncSettingsUI() {
+  document.querySelectorAll('.seg[data-key]').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(cfg[seg.dataset.key] === b.dataset.val))));
+  document.querySelectorAll('.sheet input[type=checkbox][data-key]').forEach(i => { i.checked = !!cfg[i.dataset.key]; });
+  document.querySelectorAll('.sheet input[type=range]').forEach(i => { i.value = cfg[i.dataset.key]; const o = RANGE_OUT[i.dataset.key]; $(o[0]).textContent = o[1](cfg[i.dataset.key]); });
+  document.querySelectorAll('.sheet select[data-key]').forEach(s => { s.value = String(cfg[s.dataset.key]); });
+  $('transHelp').textContent = cfg.trans === 'manual'
+    ? 'Manuel: + ve − ile R · N · 1–5 arasında vites değiştirirsin. Geri vites sadece dururken takılır.'
+    : 'Otomatik: Vites kendisi değişir. Dururken frene basılı tutarsan geri vitese geçer, gaza basınca tekrar ileri gider.';
+  $('amLbl').textContent = cfg.trans === 'auto' ? 'OTOMATİK' : 'MANUEL';
+  $('btnAM').classList.toggle('on', cfg.trans === 'auto');
+  $('upLbl').textContent = cfg.trans === 'auto' ? 'İLERİ' : 'VİTES';
+  $('downLbl').textContent = cfg.trans === 'auto' ? 'GERİ' : 'VİTES';
+  applySteerMode();
+  refreshRobotUI();
+}
+function refreshRobotUI() {
+  const drv = conn.drv;
+  const fam = drv ? drv.fam : cfg.lastFam;
+  const grp = fam === 'mk' ? 'mk' : (fam === 'lego' || fam === 'spike') ? 'lego' : 'none';
+  document.querySelectorAll('.grp[data-fam]').forEach(el => { el.hidden = el.dataset.fam !== grp; });
+  document.querySelectorAll('[data-only="spike"]').forEach(el => { el.hidden = fam !== 'spike'; });
+  $('robotInfo').textContent = drv ? 'Bağlı robot: ' + drv.label + '.' : 'Şu an bağlı robot yok. Aşağıdaki ayarlar son kullandığın robot türüne göre.';
+  let ports = null;
+  if (drv && drv.fam === 'lego') ports = drv.found();
+  if (drv && drv.fam === 'spike') ports = drv.motorPorts;
+  $('portsInfo').textContent = ports
+    ? (ports.length ? 'Hub\'da bulunan motorlar: ' + ports.map(p => PORTS[p]).join(', ') + '. ' : 'Hub\'da motor görünmüyor. ') + 'Otomatik seçimde ilk iki motor sol ve sağ, üçüncüsü direksiyon olur.'
+    : 'Otomatik seçimde hub\'daki ilk iki motor sol ve sağ, üçüncüsü direksiyon olur.';
+  if (conn.state === 'on' && drv) setConnText('Bağlı · ' + drv.label);
+  $('appInfo').textContent = NATIVE ? 'Android uygulaması · cihazlar uygulama içinde taranır.' : 'Web sürümü · cihaz listesini tarayıcı gösterir.';
+  if (!$('devSheet').hidden && NATIVE) renderDevs();
+}
+document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const key = seg.dataset.key, val = b.dataset.val;
+  if (cfg[key] === val) return;
+  cfg[key] = val; saveCfg();
+  if (key === 'trans') setTransmission(val);
+  if (key === 'steerMode' && val === 'tilt') startTilt();
+  onRobotCfg(key);
+  syncSettingsUI();
+}));
+document.querySelectorAll('.sheet input[type=checkbox][data-key]').forEach(i => i.addEventListener('change', () => {
+  cfg[i.dataset.key] = i.checked; saveCfg();
+  if (i.dataset.key === 'sound') Sound.setEnabled(i.checked);
+  if (i.dataset.key === 'showAll') renderDevs(true);
+  if (conn.link) conn.link.clear();
+}));
+document.querySelectorAll('.sheet input[type=range]').forEach(i => i.addEventListener('input', () => {
+  cfg[i.dataset.key] = Number(i.value); saveCfg();
+  const o = RANGE_OUT[i.dataset.key]; $(o[0]).textContent = o[1](cfg[i.dataset.key]);
+}));
+document.querySelectorAll('.sheet select[data-key]').forEach(s => s.addEventListener('change', () => {
+  const k = s.dataset.key;
+  cfg[k] = k === 'spikeSlot' ? Number(s.value) : s.value; saveCfg();
+  if (k === 'spikeSlot') cfg.spikeOk = false;
+  onRobotCfg(k);
+}));
+function onRobotCfg(key) {
+  const { link, drv } = conn;
+  if (!link || !drv) return;
+  link.clear();
+  if (['layout', 'portL', 'portR', 'portS'].includes(key)) {
+    if (drv.fam === 'lego' && drv.reconfig) drv.reconfig(link);
+    if (drv.fam === 'spike') toast('Yeni motor ayarı için bağlantıyı kesip yeniden bağlan.');
+  }
+  if (key === 'mkModel' && drv.fam === 'mk') toast('Model değişikliği için bağlantıyı kesip yeniden bağlan.');
+}
+$('resetCfg').addEventListener('click', () => { cfg = { ...DEFAULTS }; saveCfg(); setTransmission(cfg.trans); syncSettingsUI(); toast('Ayarlar sıfırlandı.'); });
+
+function applySteerMode() {
+  const m = cfg.steerMode;
+  wheelEl.hidden = m !== 'wheel'; joyEl.hidden = m !== 'joy'; $('tilt').hidden = m !== 'tilt';
+  $('steerLbl').textContent = m === 'tilt' ? 'Eğim' : m === 'joy' ? 'Joystick' : 'Direksiyon';
+}
+
+/* ================= Bilgi ve onay pencereleri ================= */
+let helpResolve = null;
+function openHelp(title, html, ok, cancel) {
+  $('helpTitle').textContent = title;
+  $('helpBody').innerHTML = html;
+  $('helpClose').textContent = ok || 'Tamam';
+  $('helpCancel').hidden = !cancel;
+  $('btHelp').hidden = false; $('backdrop').hidden = false;
+  releaseAll();
+}
+function closeHelp(result) {
+  $('btHelp').hidden = true;
+  if ($('settings').hidden && $('devSheet').hidden) $('backdrop').hidden = true;
+  const r = helpResolve; helpResolve = null;
+  if (r) r(result);
+}
+function askConfirm(title, html, ok) { return new Promise(res => { helpResolve = res; openHelp(title, html, ok, true); }); }
+$('helpClose').addEventListener('click', () => closeHelp(true));
+$('helpCancel').addEventListener('click', () => closeHelp(false));
+
+function showHelp(kind) {
+  if (kind === 'none' && isIOS) {
+    openHelp('iPhone ve iPad için Bluefy gerekli',
+      `<p>Apple, Safari ve Chrome'un Bluetooth cihazlara bağlanmasına izin vermiyor. Ücretsiz <b>Bluefy – Web BLE Browser</b> uygulaması bu izni veriyor.</p><ol><li>App Store'dan <b>Bluefy</b>'ı indir.</li><li>Bluefy'da şu adresi aç: <b>${WEB_URL}</b></li><li><b>Bağlan</b>'a bas ve robotunu seç.</li></ol>`);
+  } else if (kind === 'none') {
+    openHelp('Bu tarayıcı Bluetooth desteklemiyor',
+      `<p>Android telefonda en kolayı <a href="${APK_URL}" target="_blank" rel="noopener">Drift Kumanda uygulamasını</a> kurmak. Cihazları uygulamanın içinde tarar.</p><p>Bilgisayarda <b>Chrome</b> veya <b>Edge</b> ile de bağlanabilirsin. Bağlanmadan da kumandayı deneme modunda kullanabilirsin.</p>`);
+  } else {
+    openHelp('Bu pencere Bluetooth\'a izin vermiyor',
+      `<p>Kumanda şu an başka bir sayfanın içinde açık ve o sayfa Bluetooth erişimini kapatıyor.</p><ol><li><b>Android:</b> <a href="${APK_URL}" target="_blank" rel="noopener">Drift Kumanda uygulamasını</a> indirip kur. Robotları uygulamanın içinde tarar.</li><li><b>iPhone:</b> Bluefy tarayıcısında <b>${WEB_URL}</b> adresini aç.</li><li><b>Bilgisayar:</b> Aynı adresi Chrome veya Edge ile aç.</li></ol><p>O zamana kadar deneme modunda sürüşü deneyebilirsin.</p>`);
+  }
+}
+
+/* ================= Ses (telefonda motor sesi) ================= */
+const Sound = {
+  ctx:null, on:true,
+  init() {
+    if (this.ctx || !cfg.sound) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      const c = this.ctx = new AC();
+      this.master = c.createGain(); this.master.gain.value = 0.0; this.master.connect(c.destination);
+      this.filt = c.createBiquadFilter(); this.filt.type = 'lowpass'; this.filt.frequency.value = 600; this.filt.Q.value = 4; this.filt.connect(this.master);
+      this.o1 = c.createOscillator(); this.o1.type = 'sawtooth'; this.o1.frequency.value = 30;
+      this.o2 = c.createOscillator(); this.o2.type = 'square'; this.o2.frequency.value = 60;
+      const g2 = c.createGain(); g2.gain.value = 0.35;
+      this.o1.connect(this.filt); this.o2.connect(g2); g2.connect(this.filt);
+      this.o1.start(); this.o2.start();
+      const len = c.sampleRate, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      this.noiseBuf = buf;
+      const n = c.createBufferSource(); n.buffer = buf; n.loop = true;
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2100; bp.Q.value = 5;
+      this.sq = c.createGain(); this.sq.gain.value = 0;
+      n.connect(bp); bp.connect(this.sq); this.sq.connect(c.destination); n.start();
+    } catch (e) { this.ctx = null; }
+  },
+  setEnabled(v) { if (v) { this.init(); this.ctx && this.ctx.resume(); } else if (this.ctx) this.ctx.suspend(); },
+  update(rpm, load, screech) {
+    if (!this.ctx || !cfg.sound) return;
+    const t = this.ctx.currentTime, f = rpm / 30;
+    this.o1.frequency.setTargetAtTime(f, t, 0.02);
+    this.o2.frequency.setTargetAtTime(f * 2, t, 0.02);
+    this.filt.frequency.setTargetAtTime(350 + load * 1900 + rpm * 0.12, t, 0.05);
+    this.master.gain.setTargetAtTime(0.05 + load * 0.07, t, 0.05);
+    this.sq.gain.setTargetAtTime(screech * 0.09, t, 0.04);
+  },
+  tone(freqs, dur, type, vol) {
+    if (!this.ctx || !cfg.sound) return;
+    const c = this.ctx, g = c.createGain(); g.gain.value = vol; g.connect(c.destination);
+    g.gain.setTargetAtTime(0, c.currentTime + dur, 0.03);
+    for (const fq of freqs) { const o = c.createOscillator(); o.type = type; o.frequency.value = fq; o.connect(g); o.start(); o.stop(c.currentTime + dur + 0.2); }
+  },
+  horn() { this.tone([392, 494], 0.28, 'square', 0.06); },
+  grind() {
+    if (!this.ctx || !cfg.sound) return;
+    const c = this.ctx, n = c.createBufferSource(); n.buffer = this.noiseBuf;
+    const g = c.createGain(); g.gain.value = 0.16; g.gain.setTargetAtTime(0, c.currentTime + 0.25, 0.05);
+    const f = c.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 2;
+    n.connect(f); f.connect(g); g.connect(c.destination); n.start(); n.stop(c.currentTime + 0.5);
+  }
+};
+
+/* ================= Yardımcılar ================= */
+let toastTimer;
+function toast(msg, warn) {
+  const t = $('toast'); t.textContent = msg; t.classList.toggle('warn', !!warn); t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), warn ? 3600 : 2400);
+}
+function buzz(p) {
+  if (!cfg.haptics) return;
+  if (NATIVE) { try { NativeBT.vibrate(Array.isArray(p) ? 60 : p); } catch (e) {} return; }
+  if (navigator.vibrate) { try { navigator.vibrate(p); } catch (e) {} }
+}
+let wl = null;
+async function wakeLock() { try { if ('wakeLock' in navigator && !wl) { wl = await navigator.wakeLock.request('screen'); wl.addEventListener('release', () => { wl = null; }); } } catch (e) {} }
+function goQuiet() {
+  releaseAll(); car.v = 0; car.drifting = false; car.driftAmt = 0;
+  const { link, drv } = conn;
+  if (link && link.ready && drv) { link.clear(); if (carLayout()) drv.carDrive(link, 0, 0); else drv.drive(link, 0, 0); }
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) goQuiet(); else wakeLock(); });
+window.__appPause = () => { appHidden = true; goQuiet(); };
+window.__appResume = () => { appHidden = false; };
+window.__onBack = () => {
+  if (!$('btHelp').hidden) { closeHelp(false); return true; }
+  if (sheetOpen()) { closeSheets(); return true; }
+  return false;
+};
+document.addEventListener('touchmove', e => { if (!e.target.closest('.sheet,.help')) e.preventDefault(); }, { passive:false });
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('pointerdown', () => { Sound.init(); wakeLock(); }, { once:true });
+
+/* ================= Gösterge (canvas) ================= */
+const cv = $('gauge'), gx = cv.getContext('2d');
+let gw = 0, gh = 0, dpr = 1, C = {};
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of ['panel', 'panel-hi', 'line', 'ink', 'ink-dim', 'amber', 'brake', 'nitro', 'ok']) C[k] = cs.getPropertyValue('--' + k).trim();
+  C.fd = cs.getPropertyValue('--font-display').trim(); C.fm = cs.getPropertyValue('--font-mono').trim();
+}
+function resizeGauge() {
+  dpr = Math.min(3, window.devicePixelRatio || 1);
+  gw = cv.clientWidth; gh = cv.clientHeight;
+  cv.width = Math.max(1, Math.round(gw * dpr)); cv.height = Math.max(1, Math.round(gh * dpr));
+}
+new ResizeObserver(resizeGauge).observe($('cluster'));
+
+function gearLabel() {
+  if (cfg.trans === 'auto') return car.gear === -1 ? 'R' : 'D' + car.gear;
+  return car.gear === -1 ? 'R' : car.gear === 0 ? 'N' : String(car.gear);
+}
+
+function drawGauge() {
+  if (!gw || !gh) return;
+  const g = gx;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, gw, gh);
+  const R = Math.max(30, Math.min(gw / 2 - 4, (gh - 4) / 1.82));
+  const cx = gw / 2, cy = (gh - 1.82 * R) / 2 + 0.97 * R;
+  const A0 = Math.PI * 0.75, SW = Math.PI * 1.5;
+  const lim = cfg.limit / 100;
+  const kmh = Math.abs(car.v) * lim * 240 * (car.nitroOn ? 1.15 : 1);
+  const sf = clamp(kmh / 240, 0, 1);
+
+  g.lineCap = 'butt';
+  g.lineWidth = R * 0.07; g.strokeStyle = C['panel-hi'];
+  g.beginPath(); g.arc(cx, cy, R * 0.93, A0, A0 + SW); g.stroke();
+  if (sf > 0.002) {
+    g.strokeStyle = car.nitroOn ? C.nitro : C.amber;
+    g.beginPath(); g.arc(cx, cy, R * 0.93, A0, A0 + SW * sf); g.stroke();
+  }
+  const la = A0 + SW * lim;
+  g.strokeStyle = C.ink; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(cx + Math.cos(la) * R * 0.86, cy + Math.sin(la) * R * 0.86); g.lineTo(cx + Math.cos(la) * R * 1.0, cy + Math.sin(la) * R * 1.0); g.stroke();
+  g.fillStyle = C['ink-dim']; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = `600 ${Math.max(8, R * 0.1)}px ${C.fd}`;
+  for (let k = 0; k <= 240; k += 20) {
+    const a = A0 + SW * k / 240, major = k % 40 === 0;
+    g.strokeStyle = major ? C.ink : C.line; g.lineWidth = major ? 1.6 : 1;
+    const r1 = R * (major ? 0.8 : 0.83), r2 = R * 0.86;
+    g.beginPath(); g.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1); g.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2); g.stroke();
+    if (major) g.fillText(String(k), cx + Math.cos(a) * R * 0.69, cy + Math.sin(a) * R * 0.69);
+  }
+  const rr = R * 0.54, rf = clamp(car.rpm / 8000, 0, 1);
+  g.lineWidth = R * 0.06; g.strokeStyle = C['panel-hi'];
+  g.beginPath(); g.arc(cx, cy, rr, A0, A0 + SW); g.stroke();
+  g.strokeStyle = C.brake; g.globalAlpha = 0.35;
+  g.beginPath(); g.arc(cx, cy, rr, A0 + SW * 7000 / 8000, A0 + SW); g.stroke();
+  g.globalAlpha = 1;
+  g.strokeStyle = car.rpm > 7000 ? C.brake : C.ink;
+  g.beginPath(); g.arc(cx, cy, rr, A0, A0 + SW * rf); g.stroke();
+
+  const th = [5000, 5700, 6300, 6800, 7200], cols = [C.ok, C.ok, C.amber, C.amber, C.brake];
+  const flash = cfg.trans === 'manual' && car.rpm > 7350 && (performance.now() % 200 < 100);
+  const sy = cy - R * 0.33, sp = R * 0.13;
+  for (let i = 0; i < 5; i++) {
+    const on = cfg.trans === 'manual' && car.gear !== 0 && car.rpm > th[i] && !flash;
+    g.fillStyle = on ? cols[i] : C['panel-hi'];
+    g.beginPath(); g.arc(cx + (i - 2) * sp, sy, R * 0.04, 0, Math.PI * 2); g.fill();
+  }
+  const gl = gearLabel();
+  g.fillStyle = car.gear === -1 ? C.brake : car.gear === 0 ? C['ink-dim'] : C.amber;
+  g.font = `800 ${R * (gl.length > 1 ? 0.42 : 0.5)}px ${C.fd}`;
+  g.fillText(gl, cx, cy + R * 0.02);
+  g.fillStyle = C.ink;
+  g.font = `700 ${R * 0.2}px ${C.fd}`;
+  g.fillText(String(Math.round(kmh)), cx, cy + R * 0.4);
+  g.fillStyle = C['ink-dim'];
+  g.font = `600 ${Math.max(8, R * 0.085)}px ${C.fd}`;
+  g.fillText('km/h', cx, cy + R * 0.58);
+  g.font = `500 ${Math.max(8, R * 0.085)}px ${C.fm}`;
+  g.fillText((car.rpm / 1000).toFixed(1) + ' ×1000 rpm', cx, cy + R * 0.8);
+}
+
+/* ================= Ekran güncelleme ================= */
+const ui = {};
+const wheelSvg = $('wheelSvg');
+function setText(id, txt) { if (ui[id] !== txt) { ui[id] = txt; $(id).textContent = txt; } }
+function setVar(el, name, val, key) { if (ui[key] !== val) { ui[key] = val; el.style.setProperty(name, val); } }
+function setClass(el, cls, on, key) { if (ui[key] !== on) { ui[key] = on; el.classList.toggle(cls, on); } }
+function updateGearUI(force) {
+  const flashEl = car.gear > 0 ? $('gearUp') : $('gearDown');
+  flashEl.classList.add('flash'); setTimeout(() => flashEl.classList.remove('flash'), 140);
+}
+function bar(el, valEl, v, key, unit) {
+  const pct = Math.min(100, Math.abs(v)) / 2;
+  const style = v >= 0 ? `left:50%;width:${pct}%` : `left:${50 - pct}%;width:${pct}%`;
+  if (ui[key] !== style) { ui[key] = style; el.style.cssText = style; el.classList.toggle('neg', v < 0); }
+  setText(valEl, unit);
+}
+
+function render() {
+  drawGauge();
+  const wa = (inp.steer * WHEEL_LOCK).toFixed(1);
+  if (ui.wa !== wa) { ui.wa = wa; wheelSvg.style.transform = `rotate(${wa}deg)`; }
+  const kt = `translate(${(joy.x * 89).toFixed(1)}%, ${(-joy.y * 89).toFixed(1)}%)`;
+  if (ui.kt !== kt) { ui.kt = kt; knob.style.transform = kt; }
+  if (cfg.steerMode === 'tilt') {
+    $('tiltNeedle').setAttribute('transform', `rotate(${(tilt.s * 60).toFixed(1)} 100 110)`);
+    $('tiltPhone').setAttribute('transform', `rotate(${clamp(tilt.deg, -45, 45).toFixed(1)} 100 104)`);
+    setText('tiltMsg', !tilt.has ? 'Sensör bekleniyor… Ortala\'ya bas' : tilt.flat ? 'Telefonu biraz dik tut' : 'Telefonu direksiyon gibi sağa sola çevir');
+  }
+  setText('steerVal', cfg.steerMode === 'tilt' ? Math.round(tilt.deg) + '°' : Math.round(inp.steer * WHEEL_LOCK) + '°');
+  setVar($('pedGas'), '--v', ped.gas.toFixed(2), 'pg'); setClass($('pedGas'), 'on', inp.gas > 0.01, 'pgo');
+  setVar($('pedBrake'), '--v', ped.brake.toFixed(2), 'pb'); setClass($('pedBrake'), 'on', inp.brake > 0.01, 'pbo');
+  setClass($('hbrake'), 'on', inp.hb, 'hbo');
+  setVar($('nitro'), '--t', car.nitroTank.toFixed(3), 'nt'); setClass($('nitro'), 'on', car.nitroOn, 'nto');
+  const speedUnit = v => (conn.drv ? conn.drv.shape() : cfg.motor) === 'speed' && conn.drv && conn.drv.fam === 'mk' ? Math.round(v * 2) + ' rpm' : Math.round(v) + '%';
+  if (carLayout()) {
+    setText('emL', 'ÇEKİŞ'); setText('emR', 'DİR.');
+    bar($('barL'), 'valL', out.D, 'bl', speedUnit(out.D));
+    bar($('barR'), 'valR', out.S * 100, 'br', Math.round(out.S * cfg.steerRange / 2) + '°');
+  } else {
+    setText('emL', 'SOL'); setText('emR', 'SAĞ');
+    bar($('barL'), 'valL', out.L, 'bl', speedUnit(out.L));
+    bar($('barR'), 'valR', out.R, 'br', speedUnit(out.R));
+  }
+  const showDrift = car.drifting || performance.now() < car.driftShowUntil;
+  if ($('driftTag').hidden === showDrift) $('driftTag').hidden = !showDrift;
+  if (showDrift) setText('driftScore', (car.drifting ? '' : '+') + Math.round(car.driftScore));
+}
+
+/* ================= Ana döngü ================= */
+let last = performance.now(), gasHintShown = false;
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!sheetOpen()) gatherInputs(dt); else { inp.gas = inp.brake = 0; inp.hb = inp.nitro = false; inp.steer = 0; }
+  physics(dt);
+  mix();
+  if (!gasHintShown && cfg.trans === 'manual' && car.gear === 0 && inp.gas > 0.3) { gasHintShown = true; toast('Vites boşta (N). + ile 1. vitese tak.'); }
+  Sound.update(car.rpm, inp.gas, car.driftAmt * clamp(Math.abs(car.v) * 2, 0, 1));
+  render();
+  requestAnimationFrame(frame);
+}
+
+readColors();
+resizeGauge();
+syncSettingsUI();
+setTransmission(cfg.trans);
+if (cfg.steerMode === 'tilt') startTilt();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { readColors(); });
+if (!NATIVE && btSupport() === 'blocked') setConnText('Deneme modu · bu pencerede Bluetooth kapalı');
+if (matchMedia('(orientation: portrait)').matches && matchMedia('(pointer: coarse)').matches) setTimeout(() => toast('Telefonu yan çevirince kontrol daha rahat.'), 600);
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
