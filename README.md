@@ -15,6 +15,14 @@ Bu dal (`drift-kumanda`) deponun ana kodundan bağımsızdır. `main` dalına do
 | HC-05 / HC-06 Arduino araba | Klasik Bluetooth (sadece Android uygulaması) | "Arduino Bluetooth RC Car" harf komutları: F B L R G I H J S, hız 0–9 ve q |
 | HM-10 Arduino araba | BLE | Aynı harf komutları |
 
+## Mesafe sensörü (mBot2 ve mBot)
+
+- **Çarpma önleyici:** İleri giderken önde engel yaklaşınca robot ani fren yapar. Hızlıyken daha erken frenler, engel çok yakındayken ileri gitmez ama geri gidebilir. Ayarlar → Mesafe sensörü.
+- **El işareti modu** (göstergedeki MOD düğmesi ya da G tuşu):
+  - **Gel:** Elini sensöre 10–20 cm yaklaştırıp hemen geri çek. Robot gelir, önünde durur.
+  - **Dur:** Elini 10–25 cm uzakta 1 saniye sabit tut.
+  - **Git:** Elini 10 cm'den yakın getirip yarım saniye tut. Robot geri geri uzaklaşır.
+
 ## Kurulum
 
 - **Android:** [Son sürümden](https://github.com/ilerisoyomer34-coder/omer-ai-/releases/latest) `DriftKumanda.apk` dosyasını indirip kur. Cihazları uygulamanın içinde tarar.

@@ -122,7 +122,12 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .drift-tag{position:absolute;left:50%;top:2%;transform:translateX(-50%);font-family:var(--font-display);font-weight:800;font-size:1.05rem;letter-spacing:.16em;
   color:var(--amber);padding:2px 12px;border:1px solid var(--amber);border-radius:999px;background:var(--amber-soft);white-space:nowrap;font-variant-numeric:tabular-nums}
 .drift-tag b{color:var(--ink);margin-left:6px}
-.dash-row{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.sense-tag{position:absolute;left:50%;top:2%;transform:translateX(-50%);font-family:var(--font-display);font-weight:700;font-size:.95rem;letter-spacing:.1em;
+  color:var(--ink);padding:2px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel);white-space:nowrap;font-variant-numeric:tabular-nums;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.sense-tag.ok{border-color:var(--ok);color:var(--ok)}
+.sense-tag.warn{border-color:var(--brake);background:var(--brake);color:#fff}
+.gest-list{margin:0;padding-left:20px;display:grid;gap:6px}
+.dash-row{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 .chip{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:5px 8px;display:flex;flex-direction:column;align-items:center;gap:0;line-height:1.15;touch-action:none}
 .chip span{font-size:.66rem;letter-spacing:.14em;color:var(--ink-dim);font-weight:600}
 .chip b{font-family:var(--font-display);font-weight:700;font-size:1rem;letter-spacing:.06em}
@@ -256,6 +261,7 @@ code.cmd{display:block;font-family:var(--font-mono);font-size:.78rem;background:
     </button>
     <span class="pill" id="connPill" data-state="off"><i class="dot"></i><span id="connText">Robot yok · deneme modu</span></span>
     <span class="pill hide-narrow" id="batPill">Pil <b id="batVal">—</b></span>
+    <span class="pill hide-narrow" id="distPill" hidden>Mesafe <b id="distVal">—</b></span>
     <span class="pill hide-narrow" id="padPill" hidden>Oyun kolu <b>bağlı</b></span>
     <span class="spacer"></span>
     <button class="btn estop" id="btnStop" aria-label="Acil durdur">DUR</button>
@@ -307,12 +313,14 @@ code.cmd{display:block;font-family:var(--font-mono);font-size:.78rem;background:
       <div class="cluster" id="cluster">
         <canvas id="gauge"></canvas>
         <div class="drift-tag" id="driftTag" hidden>DRIFT<b id="driftScore">0</b></div>
+        <div class="sense-tag" id="senseTag" hidden></div>
       </div>
       <button class="shift up" id="gearUp" aria-label="Vites yükselt"><b>+</b><span id="upLbl">VİTES</span></button>
       <div class="dash-row">
         <button class="chip" id="btnAM"><span>ŞANZIMAN</span><b id="amLbl">MANUEL</b></button>
         <button class="chip" id="btnLights"><span>FARLAR</span><b id="lightsLbl">KAPALI</b></button>
         <button class="chip" id="btnHorn"><span>KORNA</span><b>BİP</b></button>
+        <button class="chip" id="btnMode"><span>MOD</span><b id="modeLbl">SÜRÜŞ</b></button>
       </div>
       <div class="em-row">
         <div class="em"><span id="emL">SOL</span><div class="em-bar"><i id="barL"></i></div><b id="valL">0</b></div>
@@ -429,6 +437,19 @@ code.cmd{display:block;font-family:var(--font-mono);font-size:.78rem;background:
     <p>Testte sol teker yerine sağ dönerse <b>Sol ve sağ motoru değiştir</b>'i aç. Bir teker geriye dönerse o tarafın <b>yönünü ters çevir</b> ayarını aç.</p>
   </section>
 
+  <h3>MESAFE SENSÖRÜ</h3>
+  <section>
+    <p id="senseInfo"></p>
+    <label class="tog"><input type="checkbox" id="cColl" data-key="collision"><span>Çarpma önleyici: engel yaklaşınca ani fren</span></label>
+    <div class="range-row"><label for="rBrake">Fren mesafesi</label><output id="oBrake"></output>
+      <input type="range" id="rBrake" data-key="brakeDist" min="6" max="40" step="1"><small>Robot yavaşken bu mesafede frenler. Hızlandıkça daha erken frenler.</small></div>
+    <div class="range-row"><label for="rCome">"Gel"de duracağı mesafe</label><output id="oCome"></output>
+      <input type="range" id="rCome" data-key="comeStop" min="10" max="50" step="1"></div>
+    <div class="range-row"><label for="rGo">"Git"te geri gitme süresi</label><output id="oGo"></output>
+      <input type="range" id="rGo" data-key="goTime" min="500" max="4000" step="100"></div>
+    <div class="row"><button class="btn" id="gestHelpBtn">El işaretlerini göster</button></div>
+  </section>
+
   <h3>SES VE TİTREŞİM</h3>
   <section>
     <label class="tog"><input type="checkbox" id="cSound" data-key="sound"><span>Telefonda motor sesi</span></label>
@@ -444,6 +465,7 @@ code.cmd{display:block;font-family:var(--font-mono);font-size:.78rem;background:
     <kbd>Shift</kbd><span>Nitro · kolda X veya B</span>
     <kbd>E / Q</kbd><span>Vites yükselt / düşür · kolda RB / LB</span>
     <kbd>H · L · M</kbd><span>Korna · farlar · manuel/otomatik</span>
+    <kbd>G</kbd><span>El işareti modunu aç / kapat</span>
     <kbd>X</kbd><span>Acil durdur</span>
   </section>
 
@@ -479,7 +501,8 @@ const WEB_URL = 'https://raw.githack.com/ilerisoyomer34-coder/omer-ai-/drift-kum
 /* ================= Ayarlar ================= */
 const DEFAULTS = { steerMode:'wheel', trans:'manual', limit:100, accel:65, steerSens:65, drift:70, motor:'power',
   invertL:false, invertR:false, swapLR:false, invertS:false, tank:false, sound:true, haptics:true, brakeLights:true, screenGear:true, tiltInvert:false,
-  showAll:false, mkModel:'auto', layout:'tank', portL:'auto', portR:'auto', portS:'auto', steerRange:70, spikeSlot:19, spikeOk:false, lastFam:'mk' };
+  showAll:false, mkModel:'auto', layout:'tank', portL:'auto', portR:'auto', portS:'auto', steerRange:70, spikeSlot:19, spikeOk:false, lastFam:'mk',
+  collision:true, brakeDist:12, comeStop:18, goTime:1500, gestHelp:false };
 const STORE = 'mbot2-drift-kumanda';
 let cfg = { ...DEFAULTS };
 try {
@@ -857,8 +880,8 @@ function sides(L, R) {
   if (cfg.invertR) R = -R;
   return [L, R];
 }
-const FX_RGB = { off:[0,0,0], lights:[255,190,110], reverse:[255,255,255], brake:[255,0,0], nitro:[0,110,255], drift:[255,120,0] };
-const FX_IDX = { off:6, lights:10, reverse:10, brake:9, nitro:3, drift:8 };
+const FX_RGB = { off:[0,0,0], lights:[255,190,110], reverse:[255,255,255], brake:[255,0,0], nitro:[0,110,255], drift:[255,120,0], gready:[0,70,255], gcome:[0,255,60], ggo:[255,190,0] };
+const FX_IDX = { off:6, lights:10, reverse:10, brake:9, nitro:3, drift:8, gready:3, gcome:6, ggo:7 };
 const PORTS = 'ABCDEF';
 
 function makeMbot2() {
@@ -896,13 +919,37 @@ function makeMbot2() {
   d.horn = link => link.put('horn', () => d.run('cyberpi.audio.play_tone(392,0.18)'));
   d.estop = link => { link.clear(); return link.raw([d.run('mbot2.EM_stop()'), d.run(d.script(0, 0))]); };
   d.battery = async link => { const v = await d.req(link, 'cyberpi.get_battery()', 1500); const n = Number(v); return v === undefined || v === null || isNaN(n) ? undefined : n; };
+  d.distance = async link => { const v = await d.req(link, 'cyberpi.ultrasonic2.get(1)', 450); const n = Number(v); return v === undefined || v === null || v === '' || isNaN(n) ? undefined : n; };
+  d.beep = (link, hz, ms) => link.put('beep', () => d.run(`cyberpi.audio.play_tone(${hz},${(ms / 1000).toFixed(2)})`));
   return d;
 }
 
 function makeMbot1() {
-  const d = { fam:'mk', model:'mbot1', label:'mBot', chunk:20, gap:6, hasScreen:false, car:false };
+  const d = { fam:'mk', model:'mbot1', label:'mBot', chunk:20, gap:6, hasScreen:false, car:false, buf:[], waits:new Map(), rid:0 };
   d.shape = () => 'power';
-  d.onData = () => {};
+  d.onData = b => {
+    d.buf.push(...b);
+    while (d.buf.length >= 4) {
+      const i = d.buf.findIndex((x, k) => x === 0xff && d.buf[k + 1] === 0x55);
+      if (i < 0) { d.buf = d.buf.slice(-1); break; }
+      if (i > 0) d.buf.splice(0, i);
+      const e = d.buf.findIndex((x, k) => k >= 2 && x === 0x0d && d.buf[k + 1] === 0x0a);
+      if (e < 0) { if (d.buf.length > 64) d.buf = []; break; }
+      const fr = d.buf.splice(0, e + 2);
+      if (fr.length >= 10 && fr[3] === 2) {
+        const v = new DataView(Uint8Array.from(fr.slice(4, 8)).buffer).getFloat32(0, true);
+        const w = d.waits.get(fr[2]);
+        if (w) { d.waits.delete(fr[2]); w(v); }
+      }
+    }
+  };
+  d.distance = link => new Promise(res => {
+    const id = d.rid = (d.rid % 250) + 1;
+    const t = setTimeout(() => { d.waits.delete(id); res(undefined); }, 450);
+    d.waits.set(id, v => { clearTimeout(t); res(isFinite(v) ? v : undefined); });
+    link.raw(u8([0xff, 0x55, 0x04, id, 0x01, 0x01, 0x03]));
+  });
+  d.beep = (link, hz, ms) => link.put('beep', MC.tone(hz, ms));
   d.frames = (L, R) => { [L, R] = sides(L, R); const a = Math.round(-L * 2.55), b = Math.round(R * 2.55); return { f:[MC.motor(0x09, a), MC.motor(0x0a, b)], s:`M1 ${a} · M2 ${b}` }; };
   d.init = async link => { link.raw([...d.frames(0, 0).f, MC.led(0, 255, 90)]); };
   d.drive = (link, L, R) => { const x = d.frames(L, R); link.put('drive', x.f, x.s, 450); return x.s; };
@@ -1190,6 +1237,7 @@ async function openSession(gen, first) {
   setConn('on');
   refreshRobotUI();
   pollBattery();
+  startSense();
   if (first) toast(drv.label + ' bağlandı! ' + (cfg.trans === 'manual' ? 'Gaz için önce + ile 1. vitese tak.' : 'D vitesindesin, gaza bas.'));
 }
 
@@ -1213,6 +1261,8 @@ async function onLinkLost(gen) {
 }
 
 function cleanup() {
+  if (gest.mode !== 'drive') setMode('drive', true);
+  sense.dist = null; sense.blocked = false; sense.fail = 0; sense.missingWarned = false;
   if (conn.link) { conn.link.ready = false; conn.link.clear(); }
   if (conn.tr) { try { conn.tr.dispose(); } catch (e) {} }
   conn.tr = null; conn.link = null; conn.drv = null; conn.state = 'off';
@@ -1504,6 +1554,7 @@ function physics(dt) {
   const sp = Math.max(0, Math.abs(v) - decel * dt);
   v = (v < 0 ? -1 : 1) * sp;
   car.v = clamp(v, -1.15, 1.15);
+  if (cfg.collision && sense.blocked && car.v > 0) { car.v = 0; car.drifting = false; }
   car.braking = (brk > 0.08 && Math.abs(car.v) > 0.01) || inp.hb;
 
   const speed = Math.abs(car.v), st = inp.steer;
@@ -1590,9 +1641,176 @@ setInterval(() => {
   if (cfg.brakeLights && car.braking) fx = 'brake';
   if (car.nitroOn) fx = 'nitro';
   if (car.drifting) fx = 'drift';
+  if (gest.mode === 'gesture') fx = gest.state === 'come' ? 'gcome' : gest.state === 'go' ? 'ggo' : 'gready';
+  if (performance.now() < sense.brakeUntil) fx = 'brake';
   if (drv.fx) drv.fx(link, fx);
-  if (cfg.screenGear && drv.hasScreen && drv.screen) drv.screen(link, gearLabel());
+  if (drv.hasScreen && drv.screen) {
+    if (gest.mode === 'gesture') drv.screen(link, gest.state === 'come' ? 'GEL' : gest.state === 'go' ? 'GIT' : (performance.now() < gest.flashUntil && gest.flash === 'DUR') ? 'DUR' : 'HAZIR');
+    else if (cfg.screenGear) drv.screen(link, gearLabel());
+  }
 }, 120);
+
+/* ================= Mesafe sensörü: çarpma önleyici ve el işaretleri ================= */
+const sense = { dist:null, at:0, fail:0, polling:false, count:0, rate:0, rateAt:0, brakeUntil:0, blocked:false, missingWarned:false };
+const gest = { mode:'drive', state:'ready', tL:0, tR:0, L:0, R:0, until:0, startAt:0, lastEnd:0, near:false, nearSince:0, farCount:0, firstFarAt:0,
+  used:true, veryStart:0, veryUsed:false, holdStart:0, holdMin:0, holdMax:0, nearCount:0, flash:'', flashUntil:0 };
+const G_NEAR = 25, G_VERY = 10, G_FAR = 32;
+const hasSensor = () => !!(conn.drv && conn.drv.distance);
+const fmtDist = d => d == null ? '—' : d >= 300 ? 'boş' : Math.round(d) + ' cm';
+
+function startSense() {
+  if (sense.polling || !hasSensor() || conn.state !== 'on') return;
+  if (!cfg.collision && gest.mode !== 'gesture') return;
+  sense.polling = true;
+  const drv0 = conn.drv;
+  (async () => {
+    while (conn.state === 'on' && conn.drv === drv0 && (cfg.collision || gest.mode === 'gesture')) {
+      const t0 = performance.now();
+      let v;
+      try { v = await drv0.distance(conn.link); } catch (e) {}
+      if (conn.drv !== drv0) break;
+      if (v === undefined) {
+        sense.fail++;
+        if (sense.fail === 8 && !sense.missingWarned) { sense.missingWarned = true; toast('Mesafe sensörü okunamadı. Ultrasonik sensör takılı mı?', true); }
+      } else onDistance(v, performance.now());
+      const wait = (sense.fail >= 8 ? 900 : 90) - (performance.now() - t0);
+      if (wait > 0) await sleep(wait);
+    }
+    sense.polling = false;
+    sense.dist = null; sense.blocked = false;
+    if (conn.state === 'on' && conn.drv && conn.drv !== drv0) startSense();
+  })();
+}
+
+function onDistance(v, t) {
+  const d = (v <= 0 || v >= 299) ? 300 : v;
+  sense.dist = d; sense.at = t; sense.fail = 0; sense.count++;
+  if (t - sense.rateAt >= 1000) { sense.rate = sense.rateAt ? sense.count * 1000 / (t - sense.rateAt) : 0; sense.count = 0; sense.rateAt = t; }
+  if (gest.mode === 'gesture') gestureStep(d, t);
+  collisionStep(d, t);
+}
+
+// robotun ileri doğru ne kadar hızlı gitmesi istendiği (0..1)
+function fwdFrac() { return gest.mode === 'gesture' ? (gest.L + gest.R) / 200 : (out.L + out.R) / 200; }
+const stopDistance = f => cfg.brakeDist + Math.max(0, f) * 40;
+
+function collisionStep(d, t) {
+  if (!cfg.collision) { sense.blocked = false; return; }
+  const f = fwdFrac();
+  const limit = gest.mode === 'gesture' && gest.state === 'come' ? Math.min(cfg.brakeDist, cfg.comeStop) - 2 : stopDistance(f);
+  if (f > 0.04 && d < limit) hardBrake(t);
+  sense.blocked = d < cfg.brakeDist + 6 || t < sense.brakeUntil;
+}
+
+function hardBrake(t) {
+  car.v = Math.min(0, car.v); car.drifting = false; car.driftAmt = 0;
+  out.L = out.R = out.D = 0;
+  if (gest.mode === 'gesture') { gest.tL = gest.tR = gest.L = gest.R = 0; if (gest.state !== 'ready') endMotion(t, ''); }
+  const { link, drv } = conn;
+  if (link && link.ready && drv) drv.estop(link);
+  if (t >= sense.brakeUntil) buzz(50);
+  sense.brakeUntil = t + 800;
+}
+
+function gestFlash(text, hz) {
+  gest.flash = text; gest.flashUntil = performance.now() + 1300;
+  buzz(25);
+  const { link, drv } = conn;
+  if (hz && link && link.ready && drv && drv.beep) drv.beep(link, hz, 90);
+}
+function startCome(t) { gest.state = 'come'; gest.startAt = t; gest.tL = gest.tR = 30; gestFlash('GEL', 660); }
+function startGo(t) { gest.state = 'go'; gest.startAt = t; gest.until = t + cfg.goTime; gest.tL = gest.tR = -35; gest.nearCount = 0; gestFlash('GİT', 330); }
+function endMotion(t, msg) {
+  gest.state = 'ready'; gest.tL = gest.tR = 0; gest.L = gest.R = 0; gest.lastEnd = t; gest.used = true;
+  if (msg === 'Geldi') gestFlash('GELDİ', 880);
+  else if (msg) gestFlash(msg, 440);
+}
+
+/* El işaretleri (sensörün önünde el ile):
+   GEL: eli 10–25 cm'ye getirip hemen geri çek  → robot gelir, önünde durur
+   DUR: eli 10–25 cm'de 1 sn sabit tut          → robot durur
+   GİT: eli 10 cm'den yakına getirip 0,5 sn tut   → robot geri geri uzaklaşır */
+function gestureStep(d, t) {
+  const g = gest;
+  if (g.state === 'come') {
+    if (d <= cfg.comeStop) { endMotion(t, 'Geldi'); return; }
+    if (t - g.startAt > 6000) { endMotion(t, ''); return; }
+    const sp = d >= 300 ? 30 : clamp((d - cfg.comeStop) * 1.0, 14, 45);
+    g.tL = g.tR = Math.min(sp, cfg.limit);
+    return;
+  }
+  if (g.state === 'go') {
+    if (t >= g.until) { endMotion(t, ''); return; }
+    if (t - g.startAt > 700 && d <= G_NEAR) { if (++g.nearCount >= 2) endMotion(t, 'DUR'); }
+    else g.nearCount = 0;
+    return;
+  }
+  const near = d <= G_NEAR;
+  if (t - g.lastEnd < 600) { g.near = near; g.used = true; g.farCount = 0; g.veryStart = 0; g.veryUsed = d < G_VERY; return; }
+  // GİT: robot zaten birinin önünde dursa bile çalışsın diye ayrı kilitle
+  if (d < G_VERY) {
+    if (!g.veryStart) g.veryStart = t;
+    if (!g.veryUsed && t - g.veryStart >= 500) { g.veryUsed = true; g.used = true; startGo(t); return; }
+  } else { g.veryStart = 0; if (d >= G_VERY + 3) g.veryUsed = false; }
+  if (near) {
+    g.farCount = 0;
+    if (!g.near) { g.near = true; g.nearSince = t; g.used = false; g.holdStart = t; g.holdMin = g.holdMax = d; }
+    if (d < G_VERY) {
+      g.holdStart = t; g.holdMin = g.holdMax = d;
+    } else {
+      g.holdMin = Math.min(g.holdMin, d); g.holdMax = Math.max(g.holdMax, d);
+      if (g.holdMax - g.holdMin > 6) { g.holdStart = t; g.holdMin = g.holdMax = d; }
+      if (!g.used && t - g.holdStart >= 800) { g.used = true; gestFlash('DUR', 440); }
+    }
+  } else if (g.near && d >= G_FAR) {
+    if (!g.farCount) g.firstFarAt = t;
+    if (++g.farCount >= 2) {
+      const dur = g.firstFarAt - g.nearSince;
+      g.near = false; g.farCount = 0;
+      if (!g.used && dur >= 120 && dur <= 900) startCome(t);
+    }
+  }
+}
+
+function gestureFrame(dt) {
+  const g = gest, now = performance.now();
+  if (g.state !== 'ready' && now - sense.at > 700) { endMotion(now, ''); toast('Sensörden ölçüm gelmiyor, robot durdu.', true); }
+  const step = dt * 260;
+  g.L = g.tL === 0 ? 0 : approach(g.L, g.tL, step);
+  g.R = g.tR === 0 ? 0 : approach(g.R, g.tR, step);
+  const mode = conn.drv ? conn.drv.shape() : cfg.motor;
+  out.L = shape(g.L, mode); out.R = shape(g.R, mode); out.D = 0; out.S = 0;
+  car.v = (g.L + g.R) / 200;
+  car.rpm += (IDLE + Math.abs(car.v) * 4000 - car.rpm) * Math.min(1, dt * 8);
+  car.braking = false; car.nitroOn = false;
+}
+
+function setMode(m, quiet) {
+  if (m === 'gesture') {
+    if (!conn.link || conn.state !== 'on' || !conn.drv) { toast('El işareti için önce robota bağlan.'); return; }
+    if (!hasSensor()) { toast(conn.drv.label + ' için mesafe sensörü desteği henüz yok. Şimdilik mBot2 ve mBot\'ta çalışıyor.'); return; }
+  }
+  gest.mode = m; gest.state = 'ready';
+  gest.tL = gest.tR = gest.L = gest.R = 0; gest.lastEnd = performance.now(); gest.near = false; gest.used = true; gest.flashUntil = 0;
+  releaseAll(); car.v = 0; car.drifting = false; car.driftAmt = 0;
+  $('modeLbl').textContent = m === 'gesture' ? 'İŞARET' : 'SÜRÜŞ';
+  $('btnMode').classList.toggle('on', m === 'gesture');
+  if (m === 'gesture') {
+    startSense();
+    if (!cfg.gestHelp) { cfg.gestHelp = true; saveCfg(); showGestHelp(); }
+    else toast('El işareti modu açık. Pedala basınca manuel sürüşe dönersin.');
+  } else if (!quiet) toast('Manuel sürüş');
+}
+function toggleMode() { Sound.init(); setMode(gest.mode === 'gesture' ? 'drive' : 'gesture'); }
+function showGestHelp() {
+  openHelp('El işareti modu', `<p>Elini robotun önündeki ultrasonik sensörün ("gözlerin") tam karşısında tut.</p>
+<ul class="gest-list">
+<li><b>Gel:</b> Elini sensöre 10–20 cm yaklaştır ve hemen geri çek. Robot sana doğru gelir, ${cfg.comeStop} cm kala durur.</li>
+<li><b>Dur:</b> Elini 10–25 cm uzakta 1 saniye sabit tut. Robot gelirken önüne elini koyarsan elinin önünde durur.</li>
+<li><b>Git:</b> Elini sensöre 10 cm'den yakın getir ve yarım saniye tut. Robot geri geri uzaklaşır.</li>
+</ul>
+<p>Robot işareti anlayınca öter ve ışığının rengi değişir. Pedala basınca manuel sürüşe dönersin. Çarpma önleyici fren her iki modda da çalışır.</p>`, 'Anladım');
+}
 
 /* ================= Girdiler ================= */
 const WHEEL_LOCK = 120;
@@ -1680,7 +1898,7 @@ window.addEventListener('keydown', e => {
   const k = KEYMAP[e.code];
   if (k) { keys.add(k); e.preventDefault(); Sound.init(); return; }
   if (e.repeat) return;
-  const act = { KeyE: shiftUp, KeyQ: shiftDown, KeyH: horn, KeyL: toggleLights, KeyM: toggleTrans, KeyX: emergencyStop, KeyC: () => { tilt.base = tilt.raw; } }[e.code];
+  const act = { KeyE: shiftUp, KeyQ: shiftDown, KeyH: horn, KeyL: toggleLights, KeyM: toggleTrans, KeyX: emergencyStop, KeyG: toggleMode, KeyC: () => { tilt.base = tilt.raw; } }[e.code];
   if (act) { e.preventDefault(); act(); }
 });
 window.addEventListener('keyup', e => { const k = KEYMAP[e.code]; if (k) keys.delete(k); });
@@ -1745,6 +1963,7 @@ function toggleLights() { car.lights = !car.lights; $('btnLights').classList.tog
 function toggleTrans() { cfg.trans = cfg.trans === 'auto' ? 'manual' : 'auto'; saveCfg(); setTransmission(cfg.trans); syncSettingsUI(); toast(cfg.trans === 'auto' ? 'Otomatik şanzıman' : 'Manuel şanzıman'); }
 function emergencyStop() {
   releaseAll(); car.v = 0; car.drifting = false; car.driftAmt = 0;
+  if (gest.mode === 'gesture') endMotion(performance.now(), '');
   const { link, drv } = conn;
   if (link && link.ready && drv) drv.estop(link);
   buzz([40, 40, 40]); toast('Acil durdurma', true);
@@ -1770,6 +1989,8 @@ tap($('gearDown'), shiftDown);
 tap($('btnAM'), toggleTrans);
 tap($('btnLights'), toggleLights);
 tap($('btnHorn'), horn);
+tap($('btnMode'), toggleMode);
+$('gestHelpBtn').addEventListener('click', showGestHelp);
 $('testL').addEventListener('click', () => motorTest('L'));
 $('testR').addEventListener('click', () => motorTest('R'));
 $('btnFull').hidden = NATIVE;
@@ -1795,7 +2016,8 @@ $('backdrop').addEventListener('click', () => { if (!$('btHelp').hidden) closeHe
 for (const id of ['pL', 'pR', 'pS']) $(id).innerHTML = '<option value="auto">Otomatik</option>' + [...PORTS].map(p => `<option value="${p}">${p}</option>`).join('');
 $('spSlot').innerHTML = Array.from({ length:20 }, (_, i) => `<option value="${i}">${i}. yuva</option>`).join('');
 
-const RANGE_OUT = { limit:['oLimit', v => '%' + v], accel:['oAccel', v => v], steerSens:['oSteer', v => v], drift:['oDrift', v => v], steerRange:['oSRange', v => '±' + Math.round(v / 2) + '°'] };
+const RANGE_OUT = { limit:['oLimit', v => '%' + v], accel:['oAccel', v => v], steerSens:['oSteer', v => v], drift:['oDrift', v => v], steerRange:['oSRange', v => '±' + Math.round(v / 2) + '°'],
+  brakeDist:['oBrake', v => v + ' cm'], comeStop:['oCome', v => v + ' cm'], goTime:['oGo', v => (v / 1000).toFixed(1).replace('.', ',') + ' sn'] };
 function syncSettingsUI() {
   document.querySelectorAll('.seg[data-key]').forEach(seg => seg.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(cfg[seg.dataset.key] === b.dataset.val))));
   document.querySelectorAll('.sheet input[type=checkbox][data-key]').forEach(i => { i.checked = !!cfg[i.dataset.key]; });
@@ -1842,6 +2064,7 @@ document.querySelectorAll('.sheet input[type=checkbox][data-key]').forEach(i => 
   cfg[i.dataset.key] = i.checked; saveCfg();
   if (i.dataset.key === 'sound') Sound.setEnabled(i.checked);
   if (i.dataset.key === 'showAll') renderDevs(true);
+  if (i.dataset.key === 'collision') { if (i.checked) startSense(); else { sense.blocked = false; sense.brakeUntil = 0; } }
   if (conn.link) conn.link.clear();
 }));
 document.querySelectorAll('.sheet input[type=range]').forEach(i => i.addEventListener('input', () => {
@@ -1970,6 +2193,7 @@ let wl = null;
 async function wakeLock() { try { if ('wakeLock' in navigator && !wl) { wl = await navigator.wakeLock.request('screen'); wl.addEventListener('release', () => { wl = null; }); } } catch (e) {} }
 function goQuiet() {
   releaseAll(); car.v = 0; car.drifting = false; car.driftAmt = 0;
+  if (gest.mode === 'gesture' && gest.state !== 'ready') endMotion(performance.now(), '');
   const { link, drv } = conn;
   if (link && link.ready && drv) { link.clear(); if (carLayout()) drv.carDrive(link, 0, 0); else drv.drive(link, 0, 0); }
 }
@@ -2110,9 +2334,34 @@ function render() {
     bar($('barL'), 'valL', out.L, 'bl', speedUnit(out.L));
     bar($('barR'), 'valR', out.R, 'br', speedUnit(out.R));
   }
-  const showDrift = car.drifting || performance.now() < car.driftShowUntil;
+  const now = performance.now();
+  let tag = null, tcls = '';
+  if (gest.mode === 'gesture') {
+    const st = now < gest.flashUntil ? gest.flash : ({ ready:'HAZIR', come:'GELİYOR', go:'GİDİYOR' })[gest.state];
+    tag = st + ' · ' + fmtDist(sense.dist);
+    tcls = gest.state !== 'ready' || now < gest.flashUntil ? 'ok' : '';
+  } else if (cfg.collision && sense.dist != null && sense.dist < 60) {
+    tag = 'ENGEL · ' + fmtDist(sense.dist); tcls = sense.blocked ? 'warn' : '';
+  }
+  if (now < sense.brakeUntil) { tag = 'FREN! · ' + fmtDist(sense.dist); tcls = 'warn'; }
+  const tagEl = $('senseTag');
+  if (tagEl.hidden !== !tag) tagEl.hidden = !tag;
+  if (tag) { setText('senseTag', tag); if (ui.tcls !== tcls) { ui.tcls = tcls; tagEl.className = 'sense-tag' + (tcls ? ' ' + tcls : ''); } }
+  const showDrift = !tag && (car.drifting || now < car.driftShowUntil);
   if ($('driftTag').hidden === showDrift) $('driftTag').hidden = !showDrift;
   if (showDrift) setText('driftScore', (car.drifting ? '' : '+') + Math.round(car.driftScore));
+  const showDist = hasSensor() && sense.dist != null;
+  if ($('distPill').hidden === showDist) $('distPill').hidden = !showDist;
+  if (showDist) setText('distVal', fmtDist(sense.dist));
+  if (!$('settings').hidden) setText('senseInfo', senseInfoText());
+}
+function senseInfoText() {
+  if (!conn.drv) return 'mBot2 ve mBot\'un önündeki ultrasonik sensörü kullanır. Robota bağlanınca ölçüm burada görünür.';
+  if (!hasSensor()) return conn.drv.label + ' için mesafe sensörü desteği henüz yok. Şimdilik mBot2 ve mBot\'ta çalışıyor.';
+  if (!cfg.collision && gest.mode !== 'gesture') return 'Sensör kapalı. Çarpma önleyiciyi ya da el işareti modunu açınca ölçmeye başlar.';
+  if (sense.fail >= 8) return 'Sensörden ölçüm gelmiyor. Ultrasonik sensör takılı mı?';
+  if (sense.dist == null) return 'Sensör bekleniyor…';
+  return 'Sensör: ' + fmtDist(sense.dist) + ' · saniyede ' + Math.round(sense.rate) + ' ölçüm';
 }
 
 /* ================= Ana döngü ================= */
@@ -2120,8 +2369,9 @@ let last = performance.now(), gasHintShown = false;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (!sheetOpen()) gatherInputs(dt); else { inp.gas = inp.brake = 0; inp.hb = inp.nitro = false; inp.steer = 0; }
-  physics(dt);
-  mix();
+  if (gest.mode === 'gesture' && (inp.gas > 0.15 || inp.brake > 0.15)) setMode('drive');
+  if (gest.mode === 'gesture') gestureFrame(dt);
+  else { physics(dt); mix(); }
   if (!gasHintShown && cfg.trans === 'manual' && car.gear === 0 && inp.gas > 0.3) { gasHintShown = true; toast('Vites boşta (N). + ile 1. vitese tak.'); }
   Sound.update(car.rpm, inp.gas, car.driftAmt * clamp(Math.abs(car.v) * 2, 0, 1));
   render();
