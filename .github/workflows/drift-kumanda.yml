@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   apk:
+    name: Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -39,13 +40,74 @@ jobs:
           set -o pipefail
           gradle assembleRelease --no-daemon --stacktrace -PbuildNum=${{ github.run_number }} 2>&1 | tee ../build.log
 
-      - name: Derleme sonucunu kaydet
+      - name: APK'yı ayır
         if: always()
+        run: cp android/app/build/outputs/apk/release/app-release.apk DriftKumanda.apk || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: apk
+          path: |
+            build.log
+            DriftKumanda.apk
+          if-no-files-found: warn
+
+  win:
+    name: Windows uygulaması
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Masaüstü uygulamasını derle
+        working-directory: desktop
         run: |
-          mkdir -p out
-          cp build.log out/build.log 2>/dev/null || echo "log yok" > out/build.log
-          APK=android/app/build/outputs/apk/release/app-release.apk
-          if [ -f "$APK" ]; then cp "$APK" out/DriftKumanda.apk; echo ok > out/status.txt; else echo fail > out/status.txt; fi
+          set -o pipefail
+          mkdir -p web
+          cp ../web/index.html web/index.html
+          npm pkg set version=1.${{ github.run_number }}.0
+          npm install --no-audit --no-fund 2>&1 | tee ../win-build.log
+          npx electron-builder --win --x64 --publish never 2>&1 | tee -a ../win-build.log
+          ls -la dist | tee -a ../win-build.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: win
+          path: |
+            win-build.log
+            desktop/dist/*.exe
+          if-no-files-found: warn
+
+  publish:
+    name: Sürüm sayfası
+    needs: [apk, win]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: art
+
+      - name: Derleme sonucunu kaydet
+        run: |
+          mkdir -p out rel
+          ls -R art || true
+          cp art/apk/build.log out/build.log 2>/dev/null || echo "log yok" > out/build.log
+          cp art/win/win-build.log out/win-build.log 2>/dev/null || echo "log yok" > out/win-build.log
+          if [ -f art/apk/DriftKumanda.apk ]; then cp art/apk/DriftKumanda.apk out/; cp art/apk/DriftKumanda.apk rel/; echo ok > out/status.txt; else echo fail > out/status.txt; fi
+          if ls art/win/desktop/dist/*.exe >/dev/null 2>&1; then cp art/win/desktop/dist/*.exe rel/; echo ok > out/win-status.txt; else echo fail > out/win-status.txt; fi
+          ls -la rel > out/release-files.txt
           echo "${{ github.sha }}" > out/source-sha.txt
           echo "${{ github.run_number }}" > out/run-number.txt
           cd out
@@ -54,19 +116,21 @@ jobs:
           git config user.email "41898248+github-actions[bot]@users.noreply.github.com"
           git checkout -q -b drift-kumanda-build
           git add -A
-          git commit -qm "Derleme ${{ github.run_number }} ($(cat status.txt))"
+          git commit -qm "Derleme ${{ github.run_number }} (apk $(cat status.txt), windows $(cat win-status.txt))"
           git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" drift-kumanda-build
 
       - name: Sürüm yayınla
-        if: success()
+        if: ${{ needs.apk.result == 'success' || needs.win.result == 'success' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: drift-kumanda-v${{ github.run_number }}
           name: Drift Kumanda 1.${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           make_latest: 'true'
-          files: out/DriftKumanda.apk
+          files: rel/*
           body: |
-            Android için Bluetooth robot kumandası. mBot2, mBot, LEGO BOOST / City / Technic hub, LEGO SPIKE Prime ve Essential, HC-05 / HM-10 modüllü Arduino arabalar.
+            Bluetooth robot kumandası. mBot2, mBot, LEGO BOOST / City / Technic hub, LEGO SPIKE Prime ve Essential, HC-05 / HM-10 modüllü Arduino arabalar.
 
-            **Kurulum:** Telefonda aşağıdaki `DriftKumanda.apk` dosyasını indir ve aç. "Bilinmeyen uygulamalar" uyarısı çıkarsa tarayıcına bu izni ver. Güncelleme yaparken eski sürümü silmen gerekmez.
+            **Android:** `DriftKumanda.apk` dosyasını telefonda indirip aç. "Bilinmeyen uygulamalar" uyarısı çıkarsa izin ver.
+
+            **Windows:** `DriftKumanda-Kurulum.exe` bilgisayara kurar ve masaüstüne kısayol koyar. Kurmadan çalıştırmak için `DriftKumanda-Tasinabilir.exe`. Windows "bilgisayarınızı korudu" derse **Ek bilgi → Yine de çalıştır**'a bas (uygulama imzasız olduğu için bu uyarı çıkar).

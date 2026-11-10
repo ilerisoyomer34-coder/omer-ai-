@@ -27,12 +27,14 @@ Bu dal (`drift-kumanda`) deponun ana kodundan bağımsızdır. `main` dalına do
 
 - **Android:** [Son sürümden](https://github.com/ilerisoyomer34-coder/omer-ai-/releases/latest) `DriftKumanda.apk` dosyasını indirip kur. Cihazları uygulamanın içinde tarar.
 - **iPhone / iPad:** App Store'dan ücretsiz **Bluefy** tarayıcısını kur, şu adresi aç: https://raw.githack.com/ilerisoyomer34-coder/omer-ai-/drift-kumanda/web/index.html
-- **Bilgisayar:** Aynı adresi Chrome ya da Edge ile aç.
+- **Windows:** [Son sürümden](https://github.com/ilerisoyomer34-coder/omer-ai-/releases/latest) `DriftKumanda-Kurulum.exe` (kurulum) ya da `DriftKumanda-Tasinabilir.exe` (kurmadan çalışır). Cihazları uygulamanın içinde tarar. Uygulama imzasız olduğu için Windows uyarı verirse **Ek bilgi → Yine de çalıştır**.
+- **Tarayıcı (bilgisayar):** Aynı web adresini Chrome ya da Edge ile aç.
 
 ## Klasörler
 
 - `web/index.html` – kumandanın tamamı (tek dosya). Hem web sürümü hem uygulamanın arayüzü.
+- `desktop/` – Windows uygulaması (Electron). Arayüzü açar, Bluetooth cihaz listesini uygulamanın içinde gösterir (`main.js`, `preload.js`).
 - `android/` – Android uygulaması. Arayüzü WebView'da açar, Bluetooth taramasını ve bağlantıyı Java tarafında yapar (`MainActivity.java`).
-- `.github/workflows/drift-kumanda.yml` – bu dala her gönderimde APK'yı derler, sürüm sayfasına koyar, derleme kaydını `drift-kumanda-build` dalına yazar.
+- `.github/workflows/drift-kumanda.yml` – bu dala her gönderimde APK'yı ve Windows uygulamasını derler, sürüm sayfasına koyar, derleme kaydını `drift-kumanda-build` dalına yazar.
 
 İmza anahtarı (`android/app/drift-kumanda.keystore`) sadece kişisel kullanım içindir. Play Store'a yüklemek için gizli tutulan yeni bir anahtar gerekir.

@@ -496,6 +496,8 @@ const approach = (x, target, step) => x < target ? Math.min(target, x + step) : 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const u8 = a => Uint8Array.from(a);
 const NATIVE = typeof window.NativeBT === 'object' && window.NativeBT !== null;
+const DESKTOP = !NATIVE && typeof window.kumandaDesktop === 'object' && window.kumandaDesktop !== null;
+const INAPP = NATIVE || DESKTOP;
 const APK_URL = 'https://github.com/ilerisoyomer34-coder/omer-ai-/releases/latest';
 const WEB_URL = 'https://raw.githack.com/ilerisoyomer34-coder/omer-ai-/drift-kumanda/web/index.html';
 
@@ -1319,6 +1321,8 @@ function classify(d) {
     const k = lego && lego.length >= 4 ? parseInt(lego.slice(2, 4), 16) : undefined;
     return { fam:'lego', type: LEGO_KIND[k] || 'LEGO hub', ok: k !== 0x42, badge:'LEGO', legoKind: k };
   }
+  if (/\bSPIKE\b/i.test(name)) return { fam:'spike', type:'LEGO SPIKE Prime / Essential', ok:true, badge:'SPK' };
+  if (/LEGO|Move Hub|Technic Hub|City Hub|Smart Hub|HUB NO\.|Powered Up/i.test(name)) return { fam:'lego', type:'LEGO hub', ok:true, badge:'LEGO' };
   if (/makeblock|cyberpi|mbot|bluefi/i.test(name) || has(UU.mk.svc)) return { fam:'mk', type:'Makeblock mBot2 / mBot', ok:true, badge:'mB' };
   if (has(UU.ard.svc) || /HMSoft|BT05|MLT-BT05|JDY|HM-?10|DSD/i.test(name)) return { fam:'ard', type:'BLE seri modül (HM-10)', ok:true, badge:'HM' };
   return { fam:null, type:'Tanınmayan cihaz', ok:false, badge:'BT' };
@@ -1330,6 +1334,7 @@ function devAdd(d) {
   const x = Object.assign(prev || { order: devSeq++ }, d, classify(d));
   if (prev && !d.name && prev.name) x.name = prev.name;
   if (prev && prev.userFam) x.fam = prev.userFam;
+  if (d.desk) { if (!cfg.showAll) x.ok = true; if (!x.fam) x.type = cfg.showAll ? 'Bluetooth cihazı' : 'Uyumlu cihaz'; }
   devs.set(d.id, x);
   if (!renderQueued) { renderQueued = true; requestAnimationFrame(renderDevs); }
 }
@@ -1361,7 +1366,7 @@ function devItem(x) {
   li.querySelector('.dev-go').addEventListener('click', () => {
     const d = devs.get(x.id);
     if (!d) return;
-    if (!d.fam) { li.querySelector('.dev-pick').hidden = !li.querySelector('.dev-pick').hidden; return; }
+    if (!d.fam && !d.desk) { li.querySelector('.dev-pick').hidden = !li.querySelector('.dev-pick').hidden; return; }
     chooseDevice(d, d.fam);
   });
   li.querySelector('.dev-pick').addEventListener('click', e => {
@@ -1382,11 +1387,17 @@ function devUpdate(li, x) {
   li.querySelector('.sig').dataset.l = String(sigLevel(x.rssi));
   const go = li.querySelector('.dev-go');
   const isCur = conn.dev && conn.dev.id === x.id && conn.state !== 'off';
-  go.textContent = isCur ? (conn.state === 'on' ? 'Bağlı' : 'Bağlanıyor') : (x.fam ? 'Bağlan' : 'Seç');
+  go.textContent = isCur ? (conn.state === 'on' ? 'Bağlı' : 'Bağlanıyor') : (x.fam || x.desk ? 'Bağlan' : 'Seç');
   go.disabled = isCur;
 }
 
 function chooseDevice(d, fam) {
+  if (DESKTOP) {
+    deskPicking = true;
+    $('scanText').textContent = 'Bağlanıyor…';
+    try { kumandaDesktop.pick(d.id); } catch (e) {}
+    return;
+  }
   closeSheets();
   if (NATIVE) { try { NativeBT.scan(false, false); } catch (e) {} }
   connectDevice({ id:d.id, name:d.name || 'Bluetooth cihazı', kind:d.kind, legoKind:d.legoKind, fam }, fam);
@@ -1426,9 +1437,60 @@ $('needBtn').addEventListener('click', () => { if (needAction) needAction(); });
 function openDevSheet() {
   releaseAll();
   $('devSheet').hidden = false; $('backdrop').hidden = false;
-  $('devNative').hidden = !NATIVE; $('devWeb').hidden = NATIVE;
+  $('devNative').hidden = !INAPP; $('devWeb').hidden = INAPP;
   $('cShowAll').checked = !!cfg.showAll;
   if (NATIVE) { devs.clear(); renderDevs(true); startScan(); }
+  if (DESKTOP) desktopScan();
+}
+
+// Bluetooth adı büyük-küçük harfe duyarlı karşılaştırıldığı için yaygın yazılışların hepsi
+function btRequestOptions() {
+  if (cfg.showAll) return { acceptAllDevices:true, optionalServices:ALL_SVCS };
+  const mkNames = ['Makeblock', 'makeblock', 'MakeBlock', 'MAKEBLOCK', 'CyberPi', 'Cyberpi', 'cyberpi', 'CYBERPI',
+    'mBot', 'MBot', 'Mbot', 'mbot', 'MBOT', 'BlueFi', 'Bluefi', 'bluefi', 'BLUEFI'];
+  const filters = [...mkNames.map(n => ({ namePrefix:n })), { services:[UU.mk.svc] }, { services:[UU.lego.svc] }, { services:[UU.spike.svc] },
+    { services:[UU.ard.svc] }, { namePrefix:'HMSoft' }, { namePrefix:'BT05' }, { namePrefix:'MLT' }, { namePrefix:'JDY' }];
+  return { filters, optionalServices:ALL_SVCS };
+}
+
+/* Windows uygulaması: tarayıcının cihaz seçme penceresi yerine liste uygulamanın içinde gösterilir */
+let deskReq = null, deskPicking = false;
+if (DESKTOP) {
+  try {
+    kumandaDesktop.onDevices(list => {
+      if (!deskReq) return;
+      for (const x of list) devAdd({ id:x.id, name:x.name || '', kind:'ble', svc:[], mfr:{}, desk:true });
+    });
+  } catch (e) {}
+}
+async function desktopScan() {
+  $('devNeed').hidden = true;
+  if (deskReq) {
+    const old = deskReq;
+    try { kumandaDesktop.cancel(); } catch (e) {}
+    await Promise.race([old.catch(() => {}), sleep(700)]);
+  }
+  devs.clear(); renderDevs(true);
+  setScanning(true);
+  deskPicking = false;
+  let req;
+  try { req = navigator.bluetooth.requestDevice(btRequestOptions()); }
+  catch (e) { setScanning(false); toast('Bluetooth başlatılamadı: ' + e.message, true); return; }
+  deskReq = req;
+  setTimeout(() => { if (deskReq === req && scanning) { scanning = false; $('scanSpin').hidden = true; $('scanText').textContent = devs.size ? 'Listeden robotunu seç.' : 'Robot bulunamadı. Yeniden tara.'; renderDevs(); } }, 25000);
+  try {
+    const device = await req;
+    if (deskReq !== req) return;
+    deskReq = null; deskPicking = false;
+    setScanning(false);
+    closeSheets();
+    connectDevice({ webDevice:device, id:device.id, name:device.name || 'Bluetooth cihazı' }, null);
+  } catch (e) {
+    if (deskReq !== req) return;
+    deskReq = null; deskPicking = false;
+    setScanning(false);
+    if (e && e.name !== 'NotFoundError' && e.name !== 'AbortError') toast('Bluetooth hatası: ' + e.message, true);
+  }
 }
 
 async function webPick() {
@@ -1436,12 +1498,7 @@ async function webPick() {
   if (btSupport() === 'none') { showHelp('none'); return; }
   let device;
   try {
-    // Bluetooth adı büyük-küçük harfe duyarlı karşılaştırıldığı için yaygın yazılışların hepsi
-    const mkNames = ['Makeblock', 'makeblock', 'MakeBlock', 'MAKEBLOCK', 'CyberPi', 'Cyberpi', 'cyberpi', 'CYBERPI',
-      'mBot', 'MBot', 'Mbot', 'mbot', 'MBOT', 'BlueFi', 'Bluefi', 'bluefi', 'BLUEFI'];
-    const filters = [...mkNames.map(n => ({ namePrefix:n })), { services:[UU.mk.svc] }, { services:[UU.lego.svc] }, { services:[UU.spike.svc] },
-      { services:[UU.ard.svc] }, { namePrefix:'HMSoft' }, { namePrefix:'BT05' }, { namePrefix:'MLT' }, { namePrefix:'JDY' }];
-    device = await navigator.bluetooth.requestDevice(cfg.showAll ? { acceptAllDevices:true, optionalServices:ALL_SVCS } : { filters, optionalServices:ALL_SVCS });
+    device = await navigator.bluetooth.requestDevice(btRequestOptions());
   } catch (e) {
     if (e.name === 'NotFoundError') toast('Cihaz seçilmedi. Robot açık mı, başka bir yere bağlı değil mi?');
     else if (e.name === 'SecurityError' || e.name === 'NotAllowedError') showHelp('blocked');
@@ -1452,7 +1509,7 @@ async function webPick() {
   connectDevice({ webDevice:device, id:device.id, name:device.name || 'Bluetooth cihazı' }, null);
 }
 $('devPick').addEventListener('click', webPick);
-$('devRescan').addEventListener('click', () => { devs.clear(); renderDevs(true); startScan(); });
+$('devRescan').addEventListener('click', () => { if (DESKTOP) { desktopScan(); return; } devs.clear(); renderDevs(true); startScan(); });
 $('devClose').addEventListener('click', closeSheets);
 
 /* ================= Sürüş fiziği ================= */
@@ -2012,6 +2069,7 @@ function closeSheets() {
   const wasDev = !$('devSheet').hidden;
   $('settings').hidden = true; $('devSheet').hidden = true; $('backdrop').hidden = true;
   if (wasDev && NATIVE) { try { NativeBT.scan(false, false); } catch (e) {} }
+  if (wasDev && DESKTOP && deskReq && !deskPicking) { try { kumandaDesktop.cancel(); } catch (e) {} }
 }
 $('btnSettings').addEventListener('click', openSettings);
 $('setClose').addEventListener('click', closeSheets);
@@ -2051,8 +2109,8 @@ function refreshRobotUI() {
     ? (ports.length ? 'Hub\'da bulunan motorlar: ' + ports.map(p => PORTS[p]).join(', ') + '. ' : 'Hub\'da motor görünmüyor. ') + 'Otomatik seçimde ilk iki motor sol ve sağ, üçüncüsü direksiyon olur.'
     : 'Otomatik seçimde hub\'daki ilk iki motor sol ve sağ, üçüncüsü direksiyon olur.';
   if (conn.state === 'on' && drv) setConnText('Bağlı · ' + drv.label);
-  $('appInfo').textContent = NATIVE ? 'Android uygulaması · cihazlar uygulama içinde taranır.' : 'Web sürümü · cihaz listesini tarayıcı gösterir.';
-  if (!$('devSheet').hidden && NATIVE) renderDevs();
+  $('appInfo').textContent = NATIVE ? 'Android uygulaması · cihazlar uygulama içinde taranır.' : DESKTOP ? 'Windows uygulaması · cihazlar uygulama içinde taranır.' : 'Web sürümü · cihaz listesini tarayıcı gösterir.';
+  if (!$('devSheet').hidden && INAPP) renderDevs();
 }
 document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -2067,7 +2125,7 @@ document.querySelectorAll('.seg[data-key]').forEach(seg => seg.addEventListener(
 document.querySelectorAll('.sheet input[type=checkbox][data-key]').forEach(i => i.addEventListener('change', () => {
   cfg[i.dataset.key] = i.checked; saveCfg();
   if (i.dataset.key === 'sound') Sound.setEnabled(i.checked);
-  if (i.dataset.key === 'showAll') renderDevs(true);
+  if (i.dataset.key === 'showAll') { if (DESKTOP && !$('devSheet').hidden) desktopScan(); else renderDevs(true); }
   if (i.dataset.key === 'collision') { if (i.checked) startSense(); else { sense.blocked = false; sense.brakeUntil = 0; } }
   if (conn.link) conn.link.clear();
 }));
