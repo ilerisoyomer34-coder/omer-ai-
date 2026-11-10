@@ -1,0 +1,6 @@
+total 159680
+drwxr-xr-x 2 runner runner     4096 Nov 10 13:13 .
+drwxr-xr-x 5 runner runner     4096 Nov 10 13:13 ..
+-rw-r--r-- 1 runner runner 81762935 Nov 10 13:13 DriftKumanda-Kurulum.exe
+-rw-r--r-- 1 runner runner 81599147 Nov 10 13:13 DriftKumanda-Tasinabilir.exe
+-rw-r--r-- 1 runner runner   137925 Nov 10 13:13 DriftKumanda.apk
