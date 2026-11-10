@@ -358,6 +358,7 @@ code.cmd{display:block;font-family:var(--font-mono);font-size:.78rem;background:
   <div id="devWeb" hidden>
     <section>
       <p>Bu tarayıcıda cihaz listesini tarayıcının kendi penceresi gösterir. Listeden robotunu seç, gerisini kumanda halleder.</p>
+      <p>Robotun listede yoksa aşağıdaki <b>Tanınmayan cihazları da göster</b>'i açıp tekrar seç. Robot başka bir telefona, tablete ya da mBlock'a bağlıysa listede görünmez, önce o bağlantıyı kapat.</p>
       <div class="row"><button class="btn primary" id="devPick">Bluetooth cihazı seç</button></div>
       <p>Cihaz listesinin uygulamanın içinde çıkması için <a href="https://github.com/ilerisoyomer34-coder/omer-ai-/releases/latest" target="_blank" rel="noopener" style="color:var(--amber)">Android uygulamasını</a> kullan.</p>
     </section>
@@ -1318,7 +1319,7 @@ function classify(d) {
     const k = lego && lego.length >= 4 ? parseInt(lego.slice(2, 4), 16) : undefined;
     return { fam:'lego', type: LEGO_KIND[k] || 'LEGO hub', ok: k !== 0x42, badge:'LEGO', legoKind: k };
   }
-  if (/^(Makeblock|CyberPi|mBot)/i.test(name) || has(UU.mk.svc)) return { fam:'mk', type:'Makeblock mBot2 / mBot', ok:true, badge:'mB' };
+  if (/makeblock|cyberpi|mbot|bluefi/i.test(name) || has(UU.mk.svc)) return { fam:'mk', type:'Makeblock mBot2 / mBot', ok:true, badge:'mB' };
   if (has(UU.ard.svc) || /HMSoft|BT05|MLT-BT05|JDY|HM-?10|DSD/i.test(name)) return { fam:'ard', type:'BLE seri modül (HM-10)', ok:true, badge:'HM' };
   return { fam:null, type:'Tanınmayan cihaz', ok:false, badge:'BT' };
 }
@@ -1435,7 +1436,10 @@ async function webPick() {
   if (btSupport() === 'none') { showHelp('none'); return; }
   let device;
   try {
-    const filters = [{ namePrefix:'Makeblock' }, { namePrefix:'CyberPi' }, { namePrefix:'mBot' }, { services:[UU.lego.svc] }, { services:[UU.spike.svc] },
+    // Bluetooth adı büyük-küçük harfe duyarlı karşılaştırıldığı için yaygın yazılışların hepsi
+    const mkNames = ['Makeblock', 'makeblock', 'MakeBlock', 'MAKEBLOCK', 'CyberPi', 'Cyberpi', 'cyberpi', 'CYBERPI',
+      'mBot', 'MBot', 'Mbot', 'mbot', 'MBOT', 'BlueFi', 'Bluefi', 'bluefi', 'BLUEFI'];
+    const filters = [...mkNames.map(n => ({ namePrefix:n })), { services:[UU.mk.svc] }, { services:[UU.lego.svc] }, { services:[UU.spike.svc] },
       { services:[UU.ard.svc] }, { namePrefix:'HMSoft' }, { namePrefix:'BT05' }, { namePrefix:'MLT' }, { namePrefix:'JDY' }];
     device = await navigator.bluetooth.requestDevice(cfg.showAll ? { acceptAllDevices:true, optionalServices:ALL_SVCS } : { filters, optionalServices:ALL_SVCS });
   } catch (e) {
